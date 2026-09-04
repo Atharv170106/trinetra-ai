@@ -1,0 +1,41 @@
+# Build context hygiene. Everything here is either huge, host-specific, or
+# regenerated inside the image - shipping it would bloat the layer cache and
+# risk baking a Windows venv into a Linux image.
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Node - reinstalled from the lockfile in the builder stage
+frontend/node_modules/
+frontend/dist/
+
+# Model weights: ~1.5 GB, bind-mounted read-only at runtime instead of baked in.
+# Baking them would make every rebuild re-upload them through the daemon.
+backend/model_weights/
+
+# Imagery and derived state - bind-mounted or a named volume
+backend/sample_data/
+backend/tiles_cache/
+backend/audit_log.jsonl
+*.tif
+*.tiff
+*.jp2
+*.SAFE/
+
+# Local config must not leak into the image; compose supplies env instead
+.env
+
+# VCS / editors / docs
+.git/
+.gitignore
+.vscode/
+.idea/
+*.md
+!README.md
+docs/

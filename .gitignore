@@ -1,0 +1,37 @@
+# --- Python ---
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- Node ---
+node_modules/
+dist/
+.vite/
+
+# --- Large binary assets (must be provisioned manually, never committed) ---
+backend/model_weights/*
+!backend/model_weights/.gitkeep
+backend/sample_data/*
+!backend/sample_data/.gitkeep
+backend/tiles_cache/*
+!backend/tiles_cache/.gitkeep
+
+# --- Qdrant persistent volume ---
+qdrant_storage/*
+!qdrant_storage/.gitkeep
+
+# --- Runtime audit + tile data (Phase 6 bind mounts) ---
+# Analyst verdicts are operational records, not source. They belong to a
+# deployment, not the repo - and on a real system they are evidence.
+backend/audit/
+backend/audit_log.jsonl
+backend/tiles_cache/*
+!backend/tiles_cache/.gitkeep
+
+# --- Env / editor ---
+.env
+.idea/
+.vscode/

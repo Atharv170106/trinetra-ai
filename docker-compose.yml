@@ -1,0 +1,78 @@
+# Trinetra AI - offline deployment.
+#
+#   docker compose up -d --build      first run (needs network for the build)
+#   docker compose logs -f trinetra   watch the boot
+#   open http://localhost:8000
+#
+# Air-gap posture: no image pulls at runtime, no CDNs, no external APIs. Qdrant
+# is reachable only on the internal compose network - its port is deliberately
+# NOT published to the host.
+
+services:
+  qdrant:
+    # Pinned to match qdrant-client==1.16.0 in requirements.txt. Keep in lockstep:
+    # a 1.19 client against a 1.16 server raises a compatibility warning.
+    image: qdrant/qdrant:v1.16.0
+    container_name: trinetra_qdrant
+    restart: unless-stopped
+    volumes:
+      # Bind mount, matching the Phase 1 layout - the existing index lives here,
+      # so switching to compose does not orphan the already-embedded chips.
+      - ./qdrant_storage:/qdrant/storage
+    ports:
+      # Bound to loopback, not 0.0.0.0. The host needs 6333 to keep running
+      # uvicorn from the venv during development, but nothing off-box should be
+      # able to reach the vector store.
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    healthcheck:
+      # The image has no curl/wget; /proc is the dependency-free way to confirm
+      # the listener is bound. 0x18BD == 6333.
+      test: ["CMD-SHELL", "grep -q ':18BD' /proc/net/tcp || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  trinetra:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: trinetra-ai:latest
+    container_name: trinetra-app
+    restart: unless-stopped
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      TRINETRA_QDRANT_URL: http://qdrant:6333
+      TRINETRA_LOG_LEVEL: INFO
+      # Same-origin now that FastAPI serves the built bundle, so the browser
+      # never issues a cross-origin request. Empty = no CORS exemptions at all.
+      TRINETRA_CORS_ORIGINS: "[]"
+    volumes:
+      # Weights and imagery stay on the host: large, slow to copy, and updated
+      # independently of the code. Read-only - the app has no reason to write here.
+      - ./backend/model_weights:/app/backend/model_weights:ro
+      - ./backend/sample_data:/app/backend/sample_data:ro
+      # Chip PNGs. Bound to the same directory the venv runs use, so the cache
+      # built outside Docker is still valid inside it - tile_ids are identical.
+      - ./backend/tiles_cache:/data/tiles_cache
+      # Audit log gets its own directory: bind-mounting a single file requires
+      # that file to pre-exist, which breaks a clean checkout.
+      - ./backend/audit:/data/audit
+    # GPU passthrough. Requires the NVIDIA Container Toolkit; on Windows that
+    # means Docker Desktop with the WSL2 backend and a current driver.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # A 300M-param ViT plus GDAL blocks on a 16 GB host: cap the container so a
+    # runaway ingest cannot swap the whole machine.
+    mem_limit: 10g
+    shm_size: 1g

@@ -1,0 +1,49 @@
+# Trinetra AI - Backend Dependencies (Python 3.11)
+# NOTE: torch / torchvision are NOT listed here. Install them FIRST, separately,
+# from the CUDA 12.1 index (see README / Phase 1 instructions):
+#   pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
+
+# --- API Layer ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+python-multipart==0.0.20          # required for /api/search/image upload (Phase 4)
+
+# --- Geospatial (rasterio wheels bundle their own GDAL - do NOT pip install GDAL) ---
+rasterio==1.4.3
+shapely==2.0.6
+pyproj==3.7.0
+
+# --- Numerics / Imaging ---
+numpy==1.26.4                     # pinned <2.0: safest common ground for rasterio + torch + open_clip
+Pillow==11.0.0
+
+# --- Vector DB (>=1.16 required: client.search() removed, query_points() only) ---
+# Pinned to match the qdrant/qdrant:v1.16.0 server in docker-compose.yml. Client 1.19
+# against a 1.16 server raises a compatibility warning; keep these in lockstep.
+qdrant-client==1.16.0
+
+# --- Local Inference: RemoteCLIP (retrieval) ---
+open_clip_torch>=2.24.0,<3.0.0
+huggingface-hub==0.26.5           # used ONLINE to pre-fetch weights; unused at runtime (offline)
+ftfy==6.3.1                       # open_clip tokenizer dep
+regex==2024.11.6                  # open_clip tokenizer dep
+
+# --- Local Inference: Prithvi-EO-2.0-300M (temporal change) ---
+# VERIFIED: the HF repo ships a raw Prithvi_EO_V2_300M.pt + prithvi_mae.py, and its
+# config.json has NO auto_map - so AutoModel(trust_remote_code=True) does NOT work.
+# We instantiate PrithviMAE directly (see services/ml_inference.py). Consequently
+# load_in_8bit is unreachable; measured dual-model FP16 is 0.86 GB, so it is moot.
+transformers==4.47.1              # kept: shared tokenizer/util deps
+accelerate==1.2.1
+safetensors==0.4.5
+einops==0.8.0                     # required by prithvi_mae.py's 3D ViT
+bitsandbytes>=0.43.0              # emergency-only 8-bit path; native Windows wheels since 0.41
+
+# --- Export / Utilities ---
+geojson==3.1.0                    # /export report output (Phase 5)
+tqdm==4.67.1
+
+# --- Testing ---
+httpx==0.28.1                     # required by fastapi.testclient (test_api.py)
