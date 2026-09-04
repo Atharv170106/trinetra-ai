@@ -16,9 +16,7 @@ services:
     container_name: trinetra_qdrant
     restart: unless-stopped
     volumes:
-      # Bind mount, matching the Phase 1 layout - the existing index lives here,
-      # so switching to compose does not orphan the already-embedded chips.
-      - ./qdrant_storage:/qdrant/storage
+      - qdrant_data:/qdrant/storage
     ports:
       # Bound to loopback, not 0.0.0.0. The host needs 6333 to keep running
       # uvicorn from the venv during development, but nothing off-box should be
@@ -26,13 +24,15 @@ services:
       - "127.0.0.1:6333:6333"
       - "127.0.0.1:6334:6334"
     healthcheck:
-      # The image has no curl/wget; /proc is the dependency-free way to confirm
-      # the listener is bound. 0x18BD == 6333.
-      test: ["CMD-SHELL", "grep -q ':18BD' /proc/net/tcp || exit 1"]
-      interval: 15s
+      # The image is distroless-ish: no curl, no wget, no shell utilities worth
+      # relying on. Qdrant's own binary can answer for it, and `qdrant --version`
+      # only proves the binary runs - so probe the socket via bash's /dev/tcp,
+      # which needs no external command.
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 20s
+      retries: 10
+      start_period: 30s
 
   trinetra:
     build:
@@ -76,3 +76,6 @@ services:
     # runaway ingest cannot swap the whole machine.
     mem_limit: 10g
     shm_size: 1g
+
+volumes:
+  qdrant_data:
