@@ -47,7 +47,7 @@ TEST_COLLECTION = "_trinetra_phase4_test"
 DIM = 768  # 3x3 grid of 256px tiles
 CRS = "EPSG:32643"
 ORIGIN_X, ORIGIN_Y = 300000.0, 3200000.0
-BANDS = ("B02", "B03", "B04", "B05", "B06", "B07")
+BANDS = ("B02", "B03", "B04", "B8A", "B11", "B12")
 
 
 def ok(msg: str) -> None:
@@ -118,11 +118,24 @@ def build_scene(root: Path, *, seed: int, alter_cell: tuple[int, int] | None = N
 def check_basics(client) -> None:
     section("App bootstrap + validation")
 
-    r = client.get("/")
+    # The endpoint catalogue lives at /api, not /. "/" is either the built SPA's
+    # index.html (not JSON at all) or the dev-mode JSON stub, so asserting
+    # "endpoints" in GET / could never pass in either configuration.
+    r = client.get("/api")
     if r.status_code == 200 and "endpoints" in r.json():
-        ok(f"GET / -> {len(r.json()['endpoints'])} endpoints advertised")
+        ok(f"GET /api -> {len(r.json()['endpoints'])} endpoints advertised")
     else:
+        bad("api root", f"{r.status_code} {r.text[:120]}")
+
+    # "/" is mode-dependent: accept the dev stub or a served bundle, fail only on
+    # a genuine error status.
+    r = client.get("/")
+    if r.status_code != 200:
         bad("root", f"{r.status_code} {r.text[:120]}")
+    elif r.headers.get("content-type", "").startswith("application/json"):
+        ok("GET / -> dev-mode JSON stub (no frontend bundle)")
+    else:
+        ok("GET / -> served frontend bundle")
 
     r = client.get("/api/health")
     if r.status_code != 200:

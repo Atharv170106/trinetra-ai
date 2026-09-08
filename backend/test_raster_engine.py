@@ -50,7 +50,7 @@ SCENE_W = SCENE_H = 1024
 CRS = "EPSG:32643"          # UTM 43N, covers northern India
 ORIGIN_X, ORIGIN_Y = 300000.0, 3200000.0
 
-ALL_BANDS = ("B02", "B03", "B04", "B05", "B06", "B07")
+ALL_BANDS = ("B02", "B03", "B04", "B8A", "B11", "B12")
 
 
 def ok(msg: str) -> None:
@@ -223,16 +223,16 @@ def check_band_stacks(scene_dir: Path) -> None:
         # Synthetic bands are offset by i*120, so ordering is verifiable by mean.
         means = [float(tile.prithvi_stack[i].mean()) for i in range(6)]
         if all(means[i] < means[i + 1] for i in range(5)):
-            ok(f"band order B02..B07 preserved (means {[round(m) for m in means]})")
+            ok(f"band order B02..B12 preserved (means {[round(m) for m in means]})")
         else:
             bad("band order", f"means not ascending: {[round(m) for m in means]}")
 
         # 20 m bands must not come back as a half-size array or a constant block.
-        b05 = tile.prithvi_stack[3]
-        if b05.shape == (size, size) and float(b05.std()) > 1.0:
-            ok(f"20 m band B05 upsampled to {b05.shape}, std={b05.std():.1f}")
+        b8a = tile.prithvi_stack[3]
+        if b8a.shape == (size, size) and float(b8a.std()) > 1.0:
+            ok(f"20 m band B8A upsampled to {b8a.shape}, std={b8a.std():.1f}")
         else:
-            bad("20m upsample", f"B05 shape={b05.shape} std={b05.std():.2f}")
+            bad("20m upsample", f"B8A shape={b8a.shape} std={b8a.std():.2f}")
 
         rgb8 = to_rgb_uint8(tile.rgb)
         if rgb8.shape == (size, size, 3) and rgb8.dtype == np.uint8 and rgb8.max() > 200:
@@ -333,7 +333,7 @@ def check_error_handling(tmp: Path) -> None:
     for band in ALL_BANDS:
         res = 10 if band in ("B02", "B03", "B04") else 20
         dim = 512 if res == 10 else 256
-        crs = "EPSG:32644" if band == "B07" else CRS
+        crs = "EPSG:32644" if band == "B12" else CRS
         _write(mixed / f"{band}.tif",
                rng.integers(0, 3000, (dim, dim)).astype(np.uint16), res, crs=crs)
     try:
@@ -366,7 +366,7 @@ def main() -> int:
         scene_dir = tmp / "synthetic_scene"
         print(f"\nbuilding synthetic L2A scene in {scene_dir} ...")
         build_scene(scene_dir)
-        ok("synthetic scene written (10 m B02-B04, 20 m B05-B07 + SCL)")
+        ok("synthetic scene written (10 m B02-B04, 20 m B8A/B11/B12 + SCL)")
 
         for check in (check_grid_and_geometry, check_quality_filters,
                       check_band_stacks, check_memory_stability):

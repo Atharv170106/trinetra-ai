@@ -73,8 +73,17 @@ class Settings(BaseSettings):
     remoteclip_bands: tuple[str, ...] = ("B04", "B03", "B02")
 
     # Prithvi-EO-2.0 band order is fixed by its config.json - do NOT reorder.
-    # B02,B03,B04 are 10 m; B05,B06,B07 are 20 m and must be upsampled.
-    prithvi_bands: tuple[str, ...] = ("B02", "B03", "B04", "B05", "B06", "B07")
+    # These are the HLS six the model was pretrained on: Blue, Green, Red,
+    # Narrow-NIR, SWIR1, SWIR2. B02/B03/B04 are 10 m; B8A/B11/B12 are 20 m and
+    # are upsampled to the 10 m reference grid by SceneReader.
+    #
+    # Previously listed B05/B06/B07 (red-edge), which the model never saw. The
+    # mean/std below were always the correct HLS-six statistics - note the
+    # index-3 spike (2734) then descent (1958 -> 1363), which is the NIR >>
+    # SWIR1 > SWIR2 signature. Red-edge bands cannot produce that curve, so the
+    # normalisation and the band list disagreed and the stats were right.
+    # Changing this invalidates every existing embedding: re-ingest all scenes.
+    prithvi_bands: tuple[str, ...] = ("B02", "B03", "B04", "B8A", "B11", "B12")
     prithvi_mean: tuple[float, ...] = (1087.0, 1342.0, 1433.0, 2734.0, 1958.0, 1363.0)
     prithvi_std: tuple[float, ...] = (2248.0, 2179.0, 2178.0, 1850.0, 1242.0, 1049.0)
     prithvi_num_frames: int = 4

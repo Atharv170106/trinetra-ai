@@ -401,7 +401,7 @@ class PrithviChangeEncoder:
 
         t1/t2: (6, H, W) float32 already standardized by
         raster_engine.normalize_for_prithvi(). Band order must be
-        B02,B03,B04,B05,B06,B07.
+        B02,B03,B04,B8A,B11,B12.
         """
         self.load()
         expected_c = len(settings.prithvi_bands)

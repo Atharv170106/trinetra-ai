@@ -46,7 +46,7 @@ TEST_COLLECTION = "_trinetra_phase3_test"
 SCENE_W = SCENE_H = 768  # 3x3 grid of 256px tiles
 CRS = "EPSG:32643"
 ORIGIN_X, ORIGIN_Y = 300000.0, 3200000.0
-ALL_BANDS = ("B02", "B03", "B04", "B05", "B06", "B07")
+ALL_BANDS = ("B02", "B03", "B04", "B8A", "B11", "B12")
 
 
 def ok(msg: str) -> None:

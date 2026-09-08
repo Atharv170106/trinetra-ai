@@ -35,3 +35,9 @@ backend/tiles_cache/*
 .env
 .idea/
 .vscode/
+
+# --- Secure drop zone (Step 1: staged imagery awaiting watchdog pickup) ---
+# Real Sentinel-2 crops, hundreds of MB per scene, and on a live system this is
+# operational imagery. Ships with the deployment, never with the source.
+backend/secure_drop_zone/*
+!backend/secure_drop_zone/.gitkeep

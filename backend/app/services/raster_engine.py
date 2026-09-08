@@ -13,7 +13,7 @@ Supported layouts (auto-detected):
   2. Directory of per-band GeoTIFFs / JP2s  (B02.tif, B03.tif, ... SCL.tif)
   3. Single stacked multi-band GeoTIFF + an explicit band-index mapping
 
-Resolution handling: B02/B03/B04 are 10 m, B05/B06/B07 and SCL are 20 m.
+Resolution handling: B02/B03/B04 are 10 m; B8A/B11/B12 and SCL are 20 m.
 All reads are expressed in the 10 m reference grid and each 20 m source is
 read with a scaled window + out_shape so every returned band is chip-aligned.
 """
@@ -85,7 +85,7 @@ class Tile:
     quality: TileQuality
     # (3, H, W) uint16 DN, band order B04,B03,B02 - for RemoteCLIP
     rgb: np.ndarray | None = field(default=None, repr=False)
-    # (6, H, W) uint16 DN, band order B02..B07 - for Prithvi
+    # (6, H, W) uint16 DN, band order = settings.prithvi_bands (B02,B03,B04,B8A,B11,B12) - for Prithvi
     prithvi_stack: np.ndarray | None = field(default=None, repr=False)
 
     def payload(self) -> dict:
@@ -235,7 +235,7 @@ class SceneReader:
             if not found:
                 raise RasterEngineError(
                     f"{self.source} contains no recognizable Sentinel-2 band rasters "
-                    "(expected names containing B02..B07 / SCL)."
+                    "(expected names like B02..B12 / B8A / SCL)."
                 )
             self._open_multi(found)
         else:
@@ -671,7 +671,7 @@ def normalize_for_prithvi(stack_dn: np.ndarray) -> np.ndarray:
     """
     (6, H, W) uint16 DN -> (6, H, W) float32 standardized with Prithvi's own
     channel statistics from its config.json. Band order must already be
-    B02,B03,B04,B05,B06,B07.
+    B02,B03,B04,B8A,B11,B12.
     """
     expected = len(settings.prithvi_bands)
     if stack_dn.ndim != 3 or stack_dn.shape[0] != expected:

@@ -39,3 +39,8 @@ backend/audit_log.jsonl
 *.md
 !README.md
 docs/
+
+# --- Online-only staging tool (must NOT enter the air-gapped image) ---
+backend/ingest_pipeline.py
+backend/requirements-staging.txt
+backend/secure_drop_zone/

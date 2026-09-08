@@ -1,0 +1,15 @@
+# Trinetra AI - STAGING dependencies (ONLINE ONLY)
+#
+# For ingest_pipeline.py, which runs on a connected staging machine to pull
+# imagery into secure_drop_zone/. NOT installed in the Docker image and NOT
+# required by the deployed stack - keeping it out of requirements.txt is what
+# preserves the air-gap posture.
+#
+#   pip install -r requirements-staging.txt
+#
+# Assumes rasterio / pyproj / numpy are already present from requirements.txt.
+
+# STAC client. 0.9.0 removed get_items() / get_all_items() / get_item_collections();
+# only items() and item_collection() remain. Pinned so that stays true.
+pystac-client==0.9.0
+pystac>=1.11.0

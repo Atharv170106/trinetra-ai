@@ -11,7 +11,7 @@ What it produces (default 1024x1024 -> a 4x4 grid of 256 px chips):
     sample_data/DEMO_T43RGN_20240115T052131_L2A/   <- T1
     sample_data/DEMO_T43RGN_20260115T052131_L2A/   <- T2
         B02.tif B03.tif B04.tif        10 m, 1024x1024 uint16
-        B05.tif B06.tif B07.tif SCL.tif  20 m,  512x512 uint16
+        B8A.tif B11.tif B12.tif SCL.tif  20 m,  512x512 uint16
 
 The scenes are NOT noise. Four land-cover classes are painted with plausible
 L2A reflectance DNs so that text retrieval is actually discriminative - a query
@@ -52,18 +52,27 @@ CRS = "EPSG:32643"          # UTM 43N - covers much of northern India
 ORIGIN_X, ORIGIN_Y = 300_000.0, 3_200_000.0
 REF_RES_M = 10
 BANDS_10M = ("B02", "B03", "B04")
-BANDS_20M = ("B05", "B06", "B07")
+BANDS_20M = ("B8A", "B11", "B12")
 
 # Land-cover classes -> per-band reflectance DN (L2A scale factor 10000).
-# Ordered B02,B03,B04,B05,B06,B07 (blue, green, red, red-edge x2, NIR-ish).
+# Ordered B02,B03,B04,B8A,B11,B12 = blue, green, red, narrow-NIR, SWIR1, SWIR2,
+# matching settings.prithvi_bands (the HLS six Prithvi-EO-2.0 was trained on).
+#
+# Values are physically plausible, which matters: Prithvi normalises with fixed
+# per-band mean/std, so a curve of the wrong SHAPE lands far off-distribution and
+# the change scores stop meaning anything. Key signatures preserved here:
+#   vegetation  - NIR peak, then falls hard through SWIR1 to SWIR2
+#   water       - near-total SWIR absorption (the basis of NDWI)
+#   dry soil    - rises steadily into SWIR1 (bright Thar-like sand)
+#   cloud       - bright everywhere but dips in SWIR (ice/water absorption)
 SOIL, VEG, WATER, URBAN, CONCRETE, CLOUD = 0, 1, 2, 3, 4, 5
 SPECTRA: dict[int, tuple[int, ...]] = {
-    SOIL:     (1300, 1600, 2100, 2500, 2900, 3000),
-    VEG:      (380, 700, 420, 1400, 2800, 3200),
-    WATER:    (900, 700, 450, 350, 250, 200),
-    URBAN:    (2100, 2300, 2500, 2700, 2900, 3000),
-    CONCRETE: (3400, 3550, 3700, 3800, 3900, 3950),
-    CLOUD:    (7600, 7700, 7800, 7900, 8000, 8100),
+    SOIL:     (1300, 1600, 2100, 2600, 3200, 2900),
+    VEG:      (380, 700, 420, 3400, 1700, 800),
+    WATER:    (900, 700, 450, 250, 120, 80),
+    URBAN:    (2100, 2300, 2500, 2600, 2900, 2500),
+    CONCRETE: (3400, 3550, 3700, 3750, 3900, 3500),
+    CLOUD:    (7600, 7700, 7800, 7700, 6500, 5200),
 }
 # Sentinel-2 Scene Classification Layer codes the ingest pipeline reacts to.
 SCL_FOR = {
