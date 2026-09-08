@@ -64,6 +64,15 @@ services:
       # independently of the code. Read-only - the app has no reason to write here.
       - ./backend/model_weights:/app/backend/model_weights:ro
       - ./backend/sample_data:/app/backend/sample_data:ro
+      # The drop zone. ingest_pipeline.py (or, on a real deployment, sneakernet
+      # media) writes scenes here from OUTSIDE the container; the app only reads
+      # them, hence :ro. The Step 2 watchdog will watch this same path at
+      # /app/backend/secure_drop_zone.
+      #
+      # NOTE: inotify does not fire for a bind mount written from the Windows
+      # host side, so the watchdog will need PollingObserver, not the default
+      # native Observer.
+      - ./backend/secure_drop_zone:/app/backend/secure_drop_zone:ro
       # Chip PNGs. Bound to the same directory the venv runs use, so the cache
       # built outside Docker is still valid inside it - tile_ids are identical.
       - ./backend/tiles_cache:/data/tiles_cache

@@ -108,6 +108,11 @@ GDAL_ENV: dict[str, str | int] = {
 # tile in one pass. Override with --force if you know what you are doing.
 MAX_PIXELS_10M = 8000 * 8000
 
+# AOI bounds are snapped outward onto a lattice this coarse so that the 10 m and
+# 20 m crops share a top-left corner. Must be the LCM of every resolution we
+# ingest (10 m and 20 m here). Raise to 60.0 if B01/B09/B10 are ever added.
+GRID_SNAP_M = 20.0
+
 _RETRY_ATTEMPTS = 3
 _RETRY_BACKOFF_S = 3.0
 
@@ -221,6 +226,29 @@ def _crop_window(src: Any, bbox_wgs84: tuple[float, float, float, float],
         west, east = min(xs), max(xs)
         south, north = min(ys), max(ys)
 
+    import math
+
+    # Snap the bounds outward onto a GRID_SNAP_M lattice anchored at the GRANULE
+    # origin. This is load-bearing, not tidiness.
+    #
+    # Every asset of one Sentinel-2 granule shares a top-left corner, but the 10 m
+    # and 20 m grids step differently. Flooring each asset's window independently
+    # against its own grid therefore lands the crops on origins up to 10 m apart -
+    # observed exactly that: B02 top at Y=2988010, B8A top at Y=2988020.
+    #
+    # raster_engine._read_band derives the 20 m window as `row_off / scale`, which
+    # silently assumes coincident origins. With a 10 m offset every chip reads its
+    # NIR/SWIR triplet half a 20 m pixel north of its RGB triplet - misregistered
+    # bands inside Prithvi's six-band stack, with no error raised anywhere.
+    #
+    # Snapping to 20 m makes the 10 m window's offsets and extent even, so
+    # dividing by 2 is exact and both crops share a corner.
+    ox, oy = src.transform.c, src.transform.f     # granule left / top
+    west = ox + math.floor((west - ox) / GRID_SNAP_M) * GRID_SNAP_M
+    east = ox + math.ceil((east - ox) / GRID_SNAP_M) * GRID_SNAP_M
+    north = oy - math.floor((oy - north) / GRID_SNAP_M) * GRID_SNAP_M
+    south = oy - math.ceil((oy - south) / GRID_SNAP_M) * GRID_SNAP_M
+
     raw = from_bounds(west, south, east, north, transform=src.transform)
 
     # Rounded and clamped with plain integer maths rather than Window.round_offsets
@@ -228,8 +256,6 @@ def _crop_window(src: Any, bbox_wgs84: tuple[float, float, float, float],
     # (the `op=` kwarg and pixel_precision were reworked), and this arithmetic is
     # version-proof. Floor the origin and ceil the far edge so the AOI is fully
     # covered instead of being shaved by a fraction of a pixel.
-    import math
-
     col_off = max(0, math.floor(raw.col_off))
     row_off = max(0, math.floor(raw.row_off))
     col_end = min(src.width, math.ceil(raw.col_off + raw.width))
@@ -240,7 +266,6 @@ def _crop_window(src: Any, bbox_wgs84: tuple[float, float, float, float],
             "AOI does not overlap this asset's footprint after reprojection."
         )
     return Window(col_off, row_off, col_end - col_off, row_end - row_off)
-
 
 def _guard_size(width: int, height: int, res_m: float, force: bool) -> None:
     scale = max(res_m / 10.0, 1e-6)
@@ -299,6 +324,8 @@ def _download_band(rasterio: Any, from_bounds: Any, Window: Any, Transformer: An
                         "resolution_m": abs(src.transform.a),
                         "width": int(win.width),
                         "height": int(win.height),
+                        "origin_x": float(src.window_transform(win).c),
+                        "origin_y": float(src.window_transform(win).f),
                         "dtype": str(data.dtype),
                         "bytes": dest.stat().st_size,
                     }
@@ -468,6 +495,35 @@ def _select_dates(scenes: list[Any], limit: int, strategy: str) -> list[Any]:
     return picked
 
 
+def _verify_coregistration(bands_meta: dict[str, Any]) -> None:
+    """
+    Every band must share one top-left corner, and every coarse band must be an
+    exact integer factor of the 10 m reference in both axes.
+
+    raster_engine._read_band derives a coarse band's window by dividing the 10 m
+    window offsets by the resolution ratio. That is only valid if the grids share
+    an origin. When they do not, the band is read offset by a fraction of a coarse
+    pixel and NOTHING raises - the stack is quietly misregistered and the change
+    scores drift. Fail the scene here instead.
+    """
+    ref = bands_meta.get("B02")
+    if ref is None:
+        return
+    for band, m in bands_meta.items():
+        if (m["origin_x"], m["origin_y"]) != (ref["origin_x"], ref["origin_y"]):
+            raise PipelineError(
+                f"{band} origin ({m['origin_x']}, {m['origin_y']}) does not match "
+                f"B02 ({ref['origin_x']}, {ref['origin_y']}). Grids are not "
+                f"co-registered; raster_engine would read this band offset."
+            )
+        scale = m["resolution_m"] / ref["resolution_m"]
+        if scale != int(scale) or ref["width"] % int(scale) or ref["height"] % int(scale):
+            raise PipelineError(
+                f"{band} at {m['resolution_m']} m does not divide the 10 m "
+                f"reference extent {ref['width']}x{ref['height']} evenly."
+            )
+
+
 def fetch_scene(deps: tuple, item: Any, out_root: Path,
                 bbox: tuple[float, float, float, float], force: bool) -> Path | None:
     """Download all bands for one item. Returns the scene dir, or None on failure."""
@@ -498,6 +554,8 @@ def fetch_scene(deps: tuple, item: Any, out_root: Path,
         missing = [b for b in REQUIRED_BANDS if b not in bands_meta]
         if missing:
             raise PipelineError(f"incomplete band set, missing {missing}")
+
+        _verify_coregistration(bands_meta)
 
         manifest = {
             "scene_id": scene_dir.name,

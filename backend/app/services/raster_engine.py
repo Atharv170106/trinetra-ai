@@ -326,11 +326,11 @@ class SceneReader:
                 raise RasterEngineError(
                     f"CRS mismatch: {band} is {ds.crs}, reference is {self.crs}."
                 )
-            ratio = self.width / ds.width
-            if not np.isclose(ratio, round(ratio), atol=1e-6):
+            ratio = ds.transform[0] / self.transform[0]
+            if not np.isclose(ratio, round(ratio), atol=1e-3):
                 raise RasterEngineError(
-                    f"{band} shape {ds.width}x{ds.height} is not an integer downsample "
-                    f"of the 10 m grid {self.width}x{self.height}."
+                    f"{band} resolution {ds.transform[0]} is not an integer multiple "
+                    f"of the reference 10 m grid resolution {self.transform[0]}."
                 )
 
     def _reference_dataset(self) -> rasterio.DatasetReader:
@@ -361,7 +361,7 @@ class SceneReader:
         else:
             ds = self._datasets[band]
             index = 1
-            scale = self.width / ds.width  # 1.0 for 10 m, 2.0 for 20 m
+            scale = round(ds.transform[0] / self.transform[0])  # 1 for 10 m, 2 for 20 m
             src_window = Window(
                 col_off=window.col_off / scale,
                 row_off=window.row_off / scale,
