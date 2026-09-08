@@ -4,9 +4,9 @@
 #   docker compose logs -f trinetra   watch the boot
 #   open http://localhost:8000
 #
-# Air-gap posture: no image pulls at runtime, no CDNs, no external APIs. Qdrant
-# is reachable only on the internal compose network - its port is deliberately
-# NOT published to the host.
+# Air-gap posture: no image pulls at runtime, no CDNs, no external APIs. The app
+# reaches Qdrant over the internal compose network (http://qdrant:6333). Qdrant's
+# ports are also published, but bound to 127.0.0.1 only - see the ports block.
 
 services:
   qdrant:
@@ -16,6 +16,13 @@ services:
     container_name: trinetra_qdrant
     restart: unless-stopped
     volumes:
+      # Named volume, not a host bind mount. A bind mount let an accidental
+      # `qdrant:latest` pull write a newer on-disk format into ./qdrant_storage;
+      # v1.16.0 then panicked on boot deserialising it, and kept panicking
+      # because Qdrant scans EVERY subdirectory of collections/ at startup.
+      # A named volume starts empty, so that class of corruption cannot recur.
+      # Trade-off: the index does not survive `docker compose down -v`, so a
+      # fresh stack needs both demo scenes re-ingested before search returns.
       - qdrant_data:/qdrant/storage
     ports:
       # Bound to loopback, not 0.0.0.0. The host needs 6333 to keep running
