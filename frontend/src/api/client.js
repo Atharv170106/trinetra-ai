@@ -102,6 +102,8 @@ export const api = {
     ),
 
   triageLog: () => unwrap(http.get("/triage")),
+  /** Get the bounding box from the most recently downloaded scene. */
+  pipelineBbox: () => unwrap(http.get("/pipeline/bbox")),
 
   /** Trigger ingest_pipeline.py to download Sentinel-2 scenes from Element84. */
   pipelineIngest: ({ startDate, endDate, bbox, maxCloud = 20, limit = 2 }) =>

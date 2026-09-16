@@ -450,8 +450,40 @@ def export_report(req: ExportRequest) -> Response:
 
 # --------------------------------------------------------- pipeline ingest
 import uuid
+import json as _json
 
 _PIPELINE_JOBS: dict[str, dict] = {}
+
+
+@router.get("/pipeline/bbox", tags=["pipeline"])
+def pipeline_bbox() -> dict:
+    """
+    Extract the AOI bounding box from the most recent manifest.json in the
+    secure drop zone. Returns the bbox so the frontend can auto-fill coordinates
+    for new downloads without manual entry.
+    """
+    best_bbox = None
+    best_date = ""
+    for scan_dir in (settings.secure_drop_zone_dir, settings.sample_data_dir):
+        if not scan_dir.exists():
+            continue
+        for scene_dir in scan_dir.iterdir():
+            manifest = scene_dir / "manifest.json" if scene_dir.is_dir() else None
+            if manifest and manifest.is_file():
+                try:
+                    data = _json.loads(manifest.read_text(encoding="utf-8"))
+                    bbox = data.get("aoi_bbox_wgs84")
+                    acquired = data.get("acquired", "")
+                    if bbox and len(bbox) == 4:
+                        if acquired > best_date:
+                            best_bbox = bbox
+                            best_date = acquired
+                except Exception:
+                    continue
+    if best_bbox is None:
+        # Fallback to Jaisalmer default
+        best_bbox = [70.8, 26.8, 71.0, 27.0]
+    return {"bbox": best_bbox}
 
 
 @router.post("/pipeline/ingest", response_model=PipelineIngestResponse,

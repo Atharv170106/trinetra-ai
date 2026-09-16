@@ -11,15 +11,26 @@ export default function IngestPanel({ scenes, busy, report, onIngest, onRefresh 
   const [loadingDatasets, setLoadingDatasets] = useState(true);
 
   // ---------- Pipeline download state ----------
-  const [dlStartDate, setDlStartDate] = useState("");
-  const [dlEndDate, setDlEndDate] = useState("");
-  const [dlBbox, setDlBbox] = useState({ w: "70.8", s: "26.8", e: "71.0", n: "27.0" });
-  const [dlMaxCloud, setDlMaxCloud] = useState(20);
-  const [dlLimit, setDlLimit] = useState(2);
+  const [dlDate, setDlDate] = useState("");
+  const [dlBbox, setDlBbox] = useState(null); // auto-loaded from backend
   const [dlJobId, setDlJobId] = useState(null);
-  const [dlStatus, setDlStatus] = useState(null); // null | "accepted" | "running" | "completed" | "failed"
+  const [dlStatus, setDlStatus] = useState(null);
   const [dlMessage, setDlMessage] = useState("");
   const pollRef = useRef(null);
+
+  // Auto-load bbox from existing scenes on mount
+  useEffect(() => {
+    async function loadBbox() {
+      try {
+        const res = await api.pipelineBbox();
+        setDlBbox(res.bbox);
+      } catch (err) {
+        console.error("Failed to load bbox, using Jaisalmer default", err);
+        setDlBbox([70.8, 26.8, 71.0, 27.0]);
+      }
+    }
+    loadBbox();
+  }, []);
 
   useEffect(() => {
     async function loadDatasets() {
@@ -55,7 +66,6 @@ export default function IngestPanel({ scenes, busy, report, onIngest, onRefresh 
     return datasets.filter(ds => ds.date === dateFilter);
   }, [datasets, dateFilter]);
 
-  // When date filter changes, auto-select the first matching dataset
   useEffect(() => {
     if (filteredDatasets.length > 0) {
       setSource(filteredDatasets[0].path);
@@ -82,7 +92,6 @@ export default function IngestPanel({ scenes, busy, report, onIngest, onRefresh 
           clearInterval(pollRef.current);
           pollRef.current = null;
           if (res.status === "completed") {
-            // Auto-refresh datasets so the new scene appears in the dropdown
             await refreshDatasets();
           }
         }
@@ -96,27 +105,23 @@ export default function IngestPanel({ scenes, busy, report, onIngest, onRefresh 
   }, [dlJobId, dlStatus, refreshDatasets]);
 
   const handleDownload = async () => {
-    const bbox = [
-      parseFloat(dlBbox.w), parseFloat(dlBbox.s),
-      parseFloat(dlBbox.e), parseFloat(dlBbox.n),
-    ];
-    if (bbox.some(isNaN)) {
-      setDlMessage("Invalid bounding box values.");
+    if (!dlDate) {
+      setDlMessage("Please select a date.");
       return;
     }
-    if (!dlStartDate || !dlEndDate) {
-      setDlMessage("Please select both start and end dates.");
+    if (!dlBbox) {
+      setDlMessage("Coordinates not loaded yet. Try again in a moment.");
       return;
     }
     setDlStatus("accepted");
-    setDlMessage("Submitting pipeline job...");
+    setDlMessage("Submitting download job...");
     try {
       const res = await api.pipelineIngest({
-        startDate: dlStartDate,
-        endDate: dlEndDate,
-        bbox,
-        maxCloud: dlMaxCloud,
-        limit: dlLimit,
+        startDate: dlDate,
+        endDate: dlDate,
+        bbox: dlBbox,
+        maxCloud: 20,
+        limit: 1,
       });
       setDlJobId(res.job_id);
       setDlStatus(res.status);
@@ -138,70 +143,61 @@ export default function IngestPanel({ scenes, busy, report, onIngest, onRefresh 
   };
 
   const isPipelineBusy = dlStatus === "accepted" || dlStatus === "running";
+  const bboxLabel = dlBbox
+    ? `${dlBbox[0].toFixed(2)}°W, ${dlBbox[1].toFixed(2)}°S, ${dlBbox[2].toFixed(2)}°E, ${dlBbox[3].toFixed(2)}°N`
+    : "Loading...";
 
   return (
     <div className="panel-scroll">
-      {/* ===== Section 1: Secure Download ===== */}
+      {/* ===== Section 1: Download New Data by Date ===== */}
       <div style={{ marginBottom: "2rem", paddingBottom: "1.5rem", borderBottom: "1px solid var(--border)" }}>
         <h3 style={{ margin: "0 0 0.75rem", fontSize: "0.85rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--accent)" }}>
-          🛰️ Secure Download
+          🛰️ Download New Satellite Data
         </h3>
-        <div className="hint" style={{ marginBottom: "1rem" }}>
-          Pull Sentinel-2 L2A imagery from Element84 directly into the secure drop zone.
+        <div className="hint" style={{ marginBottom: "0.75rem" }}>
+          Select a date to download Sentinel-2 imagery for the same region as your existing data.
         </div>
 
-        <div className="row" style={{ gap: "0.5rem", marginBottom: "0.75rem" }}>
-          <div style={{ flex: 1 }}>
-            <label className="lbl" htmlFor="dlStart">Start Date</label>
-            <input id="dlStart" className="txt" type="date" value={dlStartDate}
-              onChange={(e) => setDlStartDate(e.target.value)} disabled={isPipelineBusy} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label className="lbl" htmlFor="dlEnd">End Date</label>
-            <input id="dlEnd" className="txt" type="date" value={dlEndDate}
-              onChange={(e) => setDlEndDate(e.target.value)} disabled={isPipelineBusy} />
-          </div>
+        <div className="field">
+          <label className="lbl" htmlFor="dlDate">Acquisition Date</label>
+          <input
+            id="dlDate"
+            className="txt"
+            type="date"
+            value={dlDate}
+            onChange={(e) => setDlDate(e.target.value)}
+            disabled={isPipelineBusy}
+          />
         </div>
 
-        <label className="lbl">Bounding Box (W, S, E, N)</label>
-        <div className="row" style={{ gap: "0.35rem", marginBottom: "0.75rem" }}>
-          {["w", "s", "e", "n"].map((k) => (
-            <input key={k} className="txt" type="number" step="0.01"
-              style={{ flex: 1, minWidth: 0 }}
-              placeholder={k.toUpperCase()}
-              value={dlBbox[k]}
-              onChange={(e) => setDlBbox(prev => ({ ...prev, [k]: e.target.value }))}
-              disabled={isPipelineBusy} />
-          ))}
-        </div>
-
-        <div className="row" style={{ gap: "0.5rem", marginBottom: "1rem" }}>
-          <div style={{ flex: 1 }}>
-            <label className="lbl" htmlFor="dlCloud">Max Cloud %</label>
-            <input id="dlCloud" className="txt" type="number" min="0" max="100"
-              value={dlMaxCloud} onChange={(e) => setDlMaxCloud(Number(e.target.value))}
-              disabled={isPipelineBusy} />
+        <div className="field" style={{ marginTop: "0.75rem" }}>
+          <label className="lbl">Region (auto-detected)</label>
+          <div className="txt" style={{ opacity: 0.7, fontSize: "0.85rem", cursor: "default" }}>
+            📍 {bboxLabel}
           </div>
-          <div style={{ flex: 1 }}>
-            <label className="lbl" htmlFor="dlLimit">Scenes</label>
-            <input id="dlLimit" className="txt" type="number" min="1" max="10"
-              value={dlLimit} onChange={(e) => setDlLimit(Number(e.target.value))}
-              disabled={isPipelineBusy} />
+          <div className="hint">
+            Coordinates are extracted from your previously downloaded scenes.
           </div>
         </div>
 
-        <button
-          className={`btn primary block ${isPipelineBusy ? "busy-pulse" : ""}`}
-          onClick={handleDownload}
-          disabled={isPipelineBusy || !dlStartDate || !dlEndDate}
-        >
-          {isPipelineBusy ? "⏳ Downloading…" : "🔒 Initiate Secure Download"}
-        </button>
+        <div className="field" style={{ marginTop: "1rem" }}>
+          <button
+            className={`btn primary block ${isPipelineBusy ? "busy-pulse" : ""}`}
+            onClick={handleDownload}
+            disabled={isPipelineBusy || !dlDate || !dlBbox}
+          >
+            {isPipelineBusy ? "⏳ Downloading…" : "🔒 Initiate Secure Download"}
+          </button>
+        </div>
 
         {dlMessage && (
-          <div className={`notice ${dlStatus === "failed" ? "error" : dlStatus === "completed" ? "ok" : "busy"}`}
-            style={{ margin: "10px 0 0" }}>
-            {dlStatus === "completed" && "✅ "}{dlStatus === "failed" && "❌ "}{dlMessage}
+          <div
+            className={`notice ${dlStatus === "failed" ? "error" : dlStatus === "completed" ? "ok" : "busy"}`}
+            style={{ margin: "10px 0 0" }}
+          >
+            {dlStatus === "completed" && "✅ "}
+            {dlStatus === "failed" && "❌ "}
+            {dlMessage}
           </div>
         )}
       </div>
