@@ -151,7 +151,7 @@ export default function IngestPanel({ scenes, busy, report, onIngest, onRefresh 
 
   const isPipelineBusy = dlStatus === "accepted" || dlStatus === "running";
   const bboxLabel = dlBbox
-    ? `${dlBbox[0].toFixed(2)}°W, ${dlBbox[1].toFixed(2)}°S, ${dlBbox[2].toFixed(2)}°E, ${dlBbox[3].toFixed(2)}°N`
+    ? `${dlBbox[0].toFixed(2)}°E, ${dlBbox[1].toFixed(2)}°N, ${dlBbox[2].toFixed(2)}°E, ${dlBbox[3].toFixed(2)}°N`
     : "Loading...";
 
   return (
