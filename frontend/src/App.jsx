@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, downloadBlob } from "./api/client";
 import LeafletMap from "./map/LeafletMap";
 import ResultCard from "./components/ResultCard";
-import SearchPanel from "./components/SearchPanel";
+import OmniSearch from "./components/OmniSearch";
 import ChangePanel from "./components/ChangePanel";
 import IngestPanel from "./components/IngestPanel";
 import MetadataDrawer from "./components/MetadataDrawer";
@@ -227,12 +227,9 @@ export default function App() {
             {flash && !error && <div className="notice good">{flash}</div>}
 
             {tab === "search" && (
-              <SearchPanel
-                scenes={scenes}
-                busy={busy}
-                drawnBbox={drawnBbox}
-                onSearch={handleSearch}
-              />
+              <div className="panel-scroll" style={{ padding: "1rem", color: "var(--text-1)" }}>
+                Use the Omni-Search overlay on the map to search.
+              </div>
             )}
             {tab === "change" && <ChangePanel busy={busy} onCompare={handleCompare} />}
             {tab === "ingest" && (
@@ -285,7 +282,15 @@ export default function App() {
           )}
         </aside>
 
-        <main className="map-region">
+        <main className="map-region" style={{ position: "relative" }}>
+          <div style={{ position: "absolute", top: "20px", left: "60px", zIndex: 1000, width: "400px", backgroundColor: "var(--surface)", borderRadius: "8px", boxShadow: "0 4px 6px rgba(0,0,0,0.1)" }}>
+            <OmniSearch
+              scenes={scenes}
+              busy={busy}
+              drawnBbox={drawnBbox}
+              onSearch={handleSearch}
+            />
+          </div>
           <LeafletMap
             hits={hits}
             mode={mode}
