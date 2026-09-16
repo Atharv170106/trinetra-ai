@@ -10,7 +10,7 @@
 
 Trinetra AI is a **sovereign, air-gapped, multimodal satellite intelligence search engine** designed for defense and intelligence analysts. It replaces manual, coordinate-based satellite image scanning with **natural-language semantic search**, **automated area-of-interest monitoring**, and **multi-temporal change detection** — all running 100% offline on consumer-grade hardware.
 
-The system ingests Copernicus Sentinel-2 L2A Cloud-Optimized GeoTIFFs (COGs), tiles them into spatial chips, extracts high-dimensional semantic embeddings via dual AI models (**RemoteCLIP** for visual-language retrieval, **Prithvi-EO-2.0** for temporal change analysis), and indexes them in a local vector database. Analysts interact with the data through an interactive React map dashboard featuring an **Omni-Search bar**, **spatial drawing tools**, **real-time watchdog alerts**, and a **triage workflow**.
+The system acquires Sentinel-2 L2A Cloud-Optimized GeoTIFFs (COGs) from **Element 84's Earth Search STAC API** (`earth-search.aws.element84.com/v1`), tiles them into spatial chips, extracts high-dimensional semantic embeddings via dual AI models (**RemoteCLIP** for visual-language retrieval, **Prithvi-EO-2.0** for temporal change analysis), and indexes them in a local vector database. Analysts interact with the data through an interactive React map dashboard featuring an **Omni-Search bar**, **spatial drawing tools**, **real-time watchdog alerts**, and a **triage workflow**.
 
 ---
 
@@ -116,8 +116,8 @@ The system ingests Copernicus Sentinel-2 L2A Cloud-Optimized GeoTIFFs (COGs), ti
 
 ### 5.1 Secure Ingestion Pipeline (Online Staging)
 1. Analyst runs `ingest_pipeline.py` on an internet-connected staging machine.
-2. Script queries Earth Search STAC API for Sentinel-2 L2A scenes matching a bounding box + date range.
-3. Required bands (B02, B03, B04, B8A, B11, B12, SCL) are downloaded as windowed COG crops.
+2. Script queries **Element 84's Earth Search STAC API** (`sentinel-2-c1-l2a` collection) for Sentinel-2 L2A scenes matching a bounding box + date range.
+3. Required bands (B02, B03, B04, B8A, B11, B12, SCL) are downloaded as windowed COG crops via HTTP range reads.
 4. Output is a self-contained directory of per-band GeoTIFFs dropped into `secure_drop_zone/`.
 5. Directory is transferred to the air-gapped host via sneakernet (USB, secure media).
 
