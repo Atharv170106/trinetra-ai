@@ -16,6 +16,7 @@ import math
 import gc
 import torch
 import logging
+import numpy as np
 from dataclasses import dataclass, field
 
 from app.core.config import settings
