@@ -551,8 +551,27 @@ def pipeline_ingest(req: PipelineIngestRequest) -> PipelineIngestResponse:
             pipeline_logger.setLevel(old_level)
             
             if rc == 0:
-                _PIPELINE_JOBS[job_id]["status"] = "completed"
-                _PIPELINE_JOBS[job_id]["message"] = "Download completed successfully."
+                _PIPELINE_JOBS[job_id]["message"] = "Download completed successfully. Extracting chips and indexing to vector store..."
+                try:
+                    from app.services.ingest import ingest_scene
+                    from app.core.config import settings
+                    
+                    ingested_count = 0
+                    for d in settings.secure_drop_zone_dir.iterdir():
+                        if d.is_dir() and d.name.startswith("S2"):
+                            # Check if it's already in the DB by checking vector_store.list_scenes()
+                            scenes = vector_store.list_scenes()
+                            if not any(s["scene_id"] == d.name for s in scenes):
+                                pipeline_logger.info(f"Auto-ingesting {d.name}...")
+                                ingest_scene(str(d))
+                                ingested_count += 1
+                                
+                    _PIPELINE_JOBS[job_id]["status"] = "completed"
+                    _PIPELINE_JOBS[job_id]["message"] = f"Download and Indexing completed. Indexed {ingested_count} new scene(s)."
+                except Exception as ingest_exc:
+                    _PIPELINE_JOBS[job_id]["status"] = "failed"
+                    _PIPELINE_JOBS[job_id]["message"] = f"Download succeeded, but indexing failed: {ingest_exc}"
+                    logger.exception("Pipeline indexing failed")
             else:
                 _PIPELINE_JOBS[job_id]["status"] = "failed"
                 logs = log_stream.getvalue()
