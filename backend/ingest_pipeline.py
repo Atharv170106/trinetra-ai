@@ -381,8 +381,8 @@ def search_items(Client: Any, args: argparse.Namespace) -> list[Any]:
 
     if not items:
         raise PipelineError(
-            "No scenes matched. Widen --start/--end, raise --max-cloud, "
-            "or confirm the AOI is over land covered by Sentinel-2."
+            "No satellite imagery was found for this region and date range. "
+            "Try selecting a longer date range, or moving the map to a different location."
         )
 
     # Group by MGRS tile, then choose ONE tile to draw every scene from. Mixing
