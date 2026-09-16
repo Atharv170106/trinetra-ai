@@ -11,9 +11,11 @@ means anything if both share a CRS, size, and geotransform.
 
 from __future__ import annotations
 
-import gc
-import logging
 import time
+import math
+import gc
+import torch
+import logging
 from dataclasses import dataclass, field
 
 from app.core.config import settings
@@ -78,6 +80,18 @@ class ChangeReport:
             "results": [r.as_dict() for r in self.results],
             "errors": self.errors,
         }
+
+
+def generate_batches(iterable, batch_size=8):
+    """Yields batches of up to batch_size from the given iterable."""
+    batch = []
+    for item in iterable:
+        batch.append(item)
+        if len(batch) == batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
 
 
 def _unusable(q: TileQuality) -> bool:
@@ -145,59 +159,72 @@ def compare_scenes(
         # Warm the model once so per-tile timing reflects inference, not load.
         prithvi.load()
 
-        for r, c in _cells(s1, row, col):
+        for batch in generate_batches(_cells(s1, row, col), batch_size=8):
             if max_tiles is not None and report.tiles_compared >= max_tiles:
                 break
+            
+            valid_batch = []
+            t1_stacks = []
+            t2_stacks = []
+            
+            # Prepare the batch
+            for r, c in batch:
+                try:
+                    q1 = s1.tile_quality(r, c)
+                    q2 = s2.tile_quality(r, c)
+                except Exception as exc:
+                    report.errors.append(f"r{r}c{c}: quality probe failed: {exc}")
+                    report.tiles_skipped += 1
+                    continue
 
-            try:
-                q1 = s1.tile_quality(r, c)
-                q2 = s2.tile_quality(r, c)
-            except Exception as exc:
-                report.errors.append(f"r{r}c{c}: quality probe failed: {exc}")
-                report.tiles_skipped += 1
+                if skip_cloudy and (_unusable(q1) or _unusable(q2)):
+                    report.tiles_skipped += 1
+                    continue
+                    
+                try:
+                    # Normalization happens sequentially, but inference will be batched
+                    t1_stacks.append(normalize_for_prithvi(s1.read_tile_stack(r, c)))
+                    t2_stacks.append(normalize_for_prithvi(s2.read_tile_stack(r, c)))
+                    valid_batch.append((r, c, q1, q2))
+                except Exception as exc:
+                    report.errors.append(f"r{r}c{c}: prep failed: {exc}")
+                    report.tiles_skipped += 1
+                    continue
+                    
+            if not valid_batch:
                 continue
+                
+            # Execute Forward Pass on Batch with strict memory enforcement
+            with torch.no_grad():
+                results = prithvi.compare_batch(t1_stacks, t2_stacks)
+            
+            # Process results
+            for (r, c, q1, q2), result in zip(valid_batch, results):
+                report.tiles_compared += 1
+                if result.change_score < min_change_score:
+                    continue
 
-            # A cloud or a data gap on either date makes the comparison
-            # meaningless. Deliberately NOT using quality.rejected: that also
-            # trips the min_stddev flat-chip test, which exists to keep
-            # featureless chips out of the retrieval index. A uniform chip is a
-            # perfectly valid change target - a new concrete pad or a cleared
-            # airstrip reads as flat, and skipping it would hide the signal.
-            if skip_cloudy and (_unusable(q1) or _unusable(q2)):
-                report.tiles_skipped += 1
-                continue
-
-            stack1 = stack2 = None
-            try:
-                stack1 = normalize_for_prithvi(s1.read_tile_stack(r, c))
-                stack2 = normalize_for_prithvi(s2.read_tile_stack(r, c))
-                result = prithvi.compare(stack1, stack2)
-            except (InferenceError, ValueError, RasterEngineError) as exc:
-                report.errors.append(f"r{r}c{c}: {exc}")
-                report.tiles_skipped += 1
-                continue
-            finally:
-                stack1 = stack2 = None
-                if report.tiles_compared % 32 == 0:
-                    gc.collect()
-
-            report.tiles_compared += 1
-            if result.change_score < min_change_score:
-                continue
-
-            report.results.append(
-                ChangeTile(
-                    tile_id=f"{s1.scene_id}_r{r:04d}c{c:04d}",
-                    row=r,
-                    col=c,
-                    wgs84_bounding_box=list(s1.window_bounds_wgs84(s1.tile_window(r, c))),
-                    change_score=result.change_score,
-                    cosine_distance=result.cosine_distance,
-                    l2_distance=result.l2_distance,
-                    t1_cloud=round(q1.cloud_fraction, 4),
-                    t2_cloud=round(q2.cloud_fraction, 4),
+                report.results.append(
+                    ChangeTile(
+                        tile_id=f"{s1.scene_id}_r{r:04d}c{c:04d}",
+                        row=r,
+                        col=c,
+                        wgs84_bounding_box=list(s1.window_bounds_wgs84(s1.tile_window(r, c))),
+                        change_score=result.change_score,
+                        cosine_distance=result.cosine_distance,
+                        l2_distance=result.l2_distance,
+                        t1_cloud=round(q1.cloud_fraction, 4),
+                        t2_cloud=round(q2.cloud_fraction, 4),
+                    )
                 )
-            )
+
+            # Prevent VRAM Leaks
+            torch.cuda.empty_cache()
+            
+            # Optional garbage collection if processing many batches
+            if report.tiles_compared % 32 == 0:
+                import gc
+                gc.collect()
 
     report.results.sort(key=lambda t: t.change_score, reverse=True)
     if top_k is not None:

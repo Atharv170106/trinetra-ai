@@ -10,7 +10,7 @@ from watchdog.events import FileSystemEventHandler
 from app.core.config import settings
 from app.core.state import state, broadcaster
 from app.services.ingest import ingest_scene
-from app.services.ml_inference import remoteclip, _GPU_LOCK
+from app.services.ml_inference import remoteclip
 from app.services.change_detect import compare_scenes
 
 logger = logging.getLogger("watchdog")

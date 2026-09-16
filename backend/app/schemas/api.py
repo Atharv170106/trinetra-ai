@@ -183,3 +183,48 @@ class SceneSummary(BaseModel):
     tile_count: int
     acquisition_timestamp: str | None = None
     wgs84_bounding_box: list[float] | None = None
+
+class DatasetSummary(BaseModel):
+    name: str
+    path: str
+    date: str | None = None
+    location: str
+
+
+# --------------------------------------------------------- pipeline ingest
+class PipelineIngestRequest(BaseModel):
+    start_date: str = Field(
+        ..., description="Start date in YYYY-MM-DD format.",
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+    end_date: str = Field(
+        ..., description="End date in YYYY-MM-DD format.",
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+    bbox: list[float] = Field(
+        ..., min_length=4, max_length=4,
+        description="Bounding box [West, South, East, North] in WGS84 degrees.",
+    )
+    max_cloud: float = Field(
+        20.0, ge=0.0, le=100.0,
+        description="Maximum cloud cover percentage (default 20).",
+    )
+    limit: int = Field(
+        2, ge=1, le=10,
+        description="Number of scenes to download (default 2).",
+    )
+
+    @field_validator("bbox")
+    @classmethod
+    def _valid_bbox(cls, v: list[float]) -> list[float]:
+        w, s, e, n = v
+        if not (-180 <= w < e <= 180) or not (-90 <= s < n <= 90):
+            raise ValueError("bbox must be [W, S, E, N] with W<E and S<N")
+        return v
+
+
+class PipelineIngestResponse(BaseModel):
+    status: str = Field(..., description="accepted | running | completed | failed")
+    message: str
+    job_id: str
+

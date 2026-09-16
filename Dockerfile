@@ -59,13 +59,14 @@ WORKDIR /app
 # the base image's numpy; that is intended - rasterio + open_clip want 1.26.
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt \
+    "pystac-client==0.9.0" "pystac>=1.11.0" \
  && python -c "import rasterio, torch, open_clip; \
 from importlib.metadata import version; \
 print('rasterio', rasterio.__version__, '| torch', torch.__version__, \
 '| qdrant', version('qdrant-client'), '| open_clip', version('open_clip_torch'))"
 
 COPY backend/app ./backend/app
-COPY backend/make_demo_scenes.py ./backend/
+COPY backend/ingest_pipeline.py ./backend/ingest_pipeline.py
 COPY --from=web /build/dist ./frontend/dist
 
 # Writable state lives under /data (bind-mounted from the host by compose),

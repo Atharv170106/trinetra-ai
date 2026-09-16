@@ -459,6 +459,56 @@ class PrithviChangeEncoder:
         finally:
             del cube
             _free_vram()
+    def _encode_batch(self, cube: torch.Tensor) -> torch.Tensor:
+        """
+        cube: (B, C, T, H, W) normalized float. 
+        Returns (B, T, embed_dim)
+        """
+        with torch.inference_mode():
+            features = self._model.forward_features(cube)
+            tokens = features[-1]
+            patch_tokens = tokens[:, 1:, :]  # drop CLS
+            del features
+
+            n_tokens = patch_tokens.shape[1]
+            per_frame = n_tokens // self._num_frames
+            
+            # (B, T, per_frame, E) -> mean over spatial tokens -> (B, T, E)
+            grouped = patch_tokens.reshape(cube.shape[0], self._num_frames, per_frame, -1)
+            pooled = grouped.mean(dim=2).float()
+            del patch_tokens, grouped
+            return pooled
+
+    def compare_batch(self, t1_list: list[np.ndarray], t2_list: list[np.ndarray]) -> list[ChangeResult]:
+        """
+        Computes batched change scores.
+        """
+        self.load()
+        cubes = []
+        for t1, t2 in zip(t1_list, t2_list):
+            stacked = np.stack([t1, t2], axis=1).astype(np.float32, copy=False)
+            cubes.append(torch.from_numpy(stacked))
+            
+        # (B, C, T, H, W)
+        batch_cube = torch.stack(cubes).to(device=self._device, dtype=self._dtype)
+        
+        pooled = self._encode_batch(batch_cube) # (B, T, E)
+        
+        results = []
+        for i in range(pooled.shape[0]):
+            f1, f2 = pooled[i, 0], pooled[i, 1]
+            cos = torch.nn.functional.cosine_similarity(f1, f2, dim=0).item()
+            l2 = torch.norm(f1 - f2).item()
+            cosine_distance = 1.0 - cos
+            results.append(ChangeResult(
+                cosine_distance=round(cosine_distance, 6),
+                l2_distance=round(l2, 6),
+                change_score=round(min(max(cosine_distance, 0.0), 1.0), 6),
+            ))
+            
+        del batch_cube, pooled
+        _free_vram()
+        return results
 
 
 # ------------------------------------------------------------- module singletons

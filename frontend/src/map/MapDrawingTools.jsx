@@ -10,7 +10,7 @@ export default function MapDrawingTools({ onBoundingBoxChange }) {
     if (!map) return;
 
     map.pm.addControls({
-      position: "topright",
+      position: "topleft",
       drawMarker: false,
       drawCircleMarker: false,
       drawPolyline: false,

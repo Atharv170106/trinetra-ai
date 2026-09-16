@@ -1,11 +1,5 @@
-/**
- * Multi-temporal change controls.
- *
- * Sources are server-side paths, not uploads: the scenes are gigabytes and
- * already sit on the host. Both must be co-registered — the backend returns 422
- * if they are not, which is surfaced verbatim rather than swallowed.
- */
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "../api/client";
 
 export default function ChangePanel({ busy, onCompare }) {
   const [t1, setT1] = useState("");
@@ -13,6 +7,31 @@ export default function ChangePanel({ busy, onCompare }) {
   const [minScore, setMinScore] = useState(0);
   const [topK, setTopK] = useState(50);
   const [skipCloudy, setSkipCloudy] = useState(true);
+  const [datasets, setDatasets] = useState([]);
+  const [loadingDatasets, setLoadingDatasets] = useState(true);
+
+  useEffect(() => {
+    async function loadDatasets() {
+      try {
+        const data = await api.datasets();
+        setDatasets(data);
+        if (data.length > 0) {
+          if (data.length > 1) {
+            setT1(data[1].path);
+            setT2(data[0].path);
+          } else {
+            setT1(data[0].path);
+            setT2(data[0].path);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load datasets for ChangePanel", err);
+      } finally {
+        setLoadingDatasets(false);
+      }
+    }
+    loadDatasets();
+  }, []);
 
   const submit = (event) => {
     event.preventDefault();
@@ -32,30 +51,47 @@ export default function ChangePanel({ busy, onCompare }) {
         <label className="lbl" htmlFor="t1">
           T1 — earlier acquisition
         </label>
-        <input
-          id="t1"
-          className="txt"
-          placeholder="scene_2024_01 or an absolute path"
-          value={t1}
-          onChange={(e) => setT1(e.target.value)}
-        />
+        {loadingDatasets ? (
+          <div className="txt">Loading available datasets...</div>
+        ) : (
+          <select
+            id="t1"
+            className="txt"
+            value={t1}
+            onChange={(e) => setT1(e.target.value)}
+          >
+            {datasets.map((ds) => (
+              <option key={`t1-${ds.path}`} value={ds.path}>
+                {ds.date ? `[${ds.date}] ` : ""}{ds.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className="field">
         <label className="lbl" htmlFor="t2">
           T2 — later acquisition
         </label>
-        <input
-          id="t2"
-          className="txt"
-          placeholder="scene_2026_01 or an absolute path"
-          value={t2}
-          onChange={(e) => setT2(e.target.value)}
-        />
+        {loadingDatasets ? (
+          <div className="txt">Loading available datasets...</div>
+        ) : (
+          <select
+            id="t2"
+            className="txt"
+            value={t2}
+            onChange={(e) => setT2(e.target.value)}
+          >
+            {datasets.map((ds) => (
+              <option key={`t2-${ds.path}`} value={ds.path}>
+                {ds.date ? `[${ds.date}] ` : ""}{ds.name}
+              </option>
+            ))}
+          </select>
+        )}
         <div className="hint">
-          Relative names resolve inside <code>backend/sample_data/</code>. Both
-          scenes must share a CRS, size, and geotransform — the comparison is
-          refused otherwise, since chip r,c would not be the same ground.
+          Available datasets in the secure drop zone and sample data. Both
+          scenes must share a CRS, size, and geotransform.
         </div>
       </div>
 
@@ -72,8 +108,9 @@ export default function ChangePanel({ busy, onCompare }) {
             step="0.005"
             value={minScore}
             onChange={(e) => setMinScore(Number(e.target.value))}
+            className="tactical-slider"
           />
-          <span className="range-val">{minScore === 0 ? "off" : minScore.toFixed(3)}</span>
+          <span className="range-val" style={{ marginLeft: "12px" }}>{minScore === 0 ? "off" : minScore.toFixed(3)}</span>
         </div>
         <div className="hint">
           Prithvi cosine distance between T1 and T2 features. Unchanged terrain
@@ -93,7 +130,7 @@ export default function ChangePanel({ busy, onCompare }) {
               value={topK}
               onChange={(e) => setTopK(e.target.value)}
             >
-              {[10, 25, 50, 100, 200].map((n) => (
+              {[5, 10, 25, 50].map((n) => (
                 <option key={n} value={n}>
                   {n}
                 </option>
@@ -101,34 +138,36 @@ export default function ChangePanel({ busy, onCompare }) {
             </select>
           </div>
           <div>
-            <label className="lbl" htmlFor="skip">
+            <label className="lbl" htmlFor="cloudy">
               Cloudy chips
             </label>
             <select
-              id="skip"
+              id="cloudy"
               className="txt"
-              value={skipCloudy ? "skip" : "keep"}
+              value={skipCloudy ? "skip" : "include"}
               onChange={(e) => setSkipCloudy(e.target.value === "skip")}
             >
               <option value="skip">Skip</option>
-              <option value="keep">Compare anyway</option>
+              <option value="include">Include</option>
             </select>
           </div>
         </div>
       </div>
 
-      <div className="field">
+      <div className="field" style={{ marginTop: "1rem" }}>
         <button
-          className="btn primary block"
+          className={`btn primary block ${busy ? "busy-pulse" : ""}`}
           type="submit"
-          disabled={busy || !t1.trim() || !t2.trim()}
+          disabled={busy || !t1 || !t2}
         >
-          {busy ? "Comparing…" : "Run change analysis"}
+          {busy ? "Running Analysis…" : "Run change analysis"}
         </button>
-        <div className="hint">
-          Whole-scene comparison runs Prithvi on every chip pair and can take
-          several minutes. Nothing is indexed — results are computed on demand.
-        </div>
+        {busy && (
+          <div className="notice busy" style={{ margin: "10px 0 0" }}>
+            Whole-scene comparison runs Prithvi on every chip pair and can take
+            several minutes. Nothing is indexed — results are computed on demand.
+          </div>
+        )}
       </div>
     </form>
   );

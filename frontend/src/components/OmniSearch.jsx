@@ -1,56 +1,83 @@
-/**
- * Natural-language retrieval controls.
- * Omni-search with regex detection and Geoman integration.
- */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import TacticalFilters from "./TacticalFilters";
 
-const EXAMPLES = [
-  "aircraft parked on a runway",
-  "military vehicles in an open compound",
-  "newly constructed buildings",
-  "bridge over a river",
-  "dense forest canopy",
+const QUICK_PROMPTS = [
+  "aircraft on tarmac",
+  "military vehicles in open compound",
+  "newly constructed bunkers",
+  "patrol boats near dock",
 ];
 
-export default function SearchPanel({ scenes, busy, drawnBbox, onSearch }) {
+export default function OmniSearch({ scenes = [], busy, drawnBbox, onSearch, onOpenIngest, onOpenChange }) {
   const [query, setQuery] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
   const [limit, setLimit] = useState(20);
   const [threshold, setThreshold] = useState(0);
   const [sceneId, setSceneId] = useState("");
   const [maxCloud, setMaxCloud] = useState(100);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [detectedType, setDetectedType] = useState("SEMANTIC");
+  const popoverRef = useRef(null);
 
   useEffect(() => {
     if (drawnBbox) {
       setQuery(`[${drawnBbox.join(", ")}]`);
+      setDetectedType("AOI BOUNDS");
     } else if (query.startsWith("[")) {
       setQuery("");
+      setDetectedType("SEMANTIC");
     }
   }, [drawnBbox]);
 
-  const submit = (event) => {
-    event.preventDefault();
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (/^\[?\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*\]?$/.test(trimmed)) {
+      setDetectedType("COORDINATES");
+    } else if (drawnBbox && query.startsWith("[")) {
+      setDetectedType("AOI BOUNDS");
+    } else {
+      setDetectedType("SEMANTIC");
+    }
+  }, [query, drawnBbox]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
+        setShowFilters(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleResetFilters = () => {
+    setStartDate("");
+    setEndDate("");
+    setSceneId("");
+    setThreshold(0);
+    setMaxCloud(100);
+  };
+
+  const handleSubmit = (e) => {
+    if (e) e.preventDefault();
     const trimmed = query.trim();
     if (!trimmed || busy) return;
 
-    // Detect if query is purely coordinates
-    const isCoords = /^\[?\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*\]?$/.test(trimmed);
-    
     let textQuery = trimmed;
     let boundingBox = drawnBbox;
 
-    if (isCoords) {
-      textQuery = "satellite imagery"; // Default fallback text
+    if (detectedType === "COORDINATES") {
+      textQuery = "satellite terrain features";
       try {
         boundingBox = JSON.parse(trimmed.replace(/^\[?/, "[").replace(/\]?$/, "]"));
-      } catch(e) {}
+      } catch (err) {}
     }
 
-    const dateRange = (startDate && endDate) ? [
-      new Date(startDate).toISOString(), 
-      new Date(endDate).toISOString()
-    ] : null;
+    const dateRange =
+      startDate && endDate
+        ? [new Date(startDate).toISOString(), new Date(endDate).toISOString()]
+        : null;
 
     onSearch({
       query: textQuery,
@@ -58,152 +85,113 @@ export default function SearchPanel({ scenes, busy, drawnBbox, onSearch }) {
       scoreThreshold: threshold > 0 ? threshold : null,
       sceneIds: sceneId ? [sceneId] : null,
       maxCloud: maxCloud < 100 ? maxCloud / 100 : null,
-      boundingBox: boundingBox,
-      dateRange: dateRange,
+      boundingBox,
+      dateRange,
     });
   };
 
+  const hasActiveFilters = Boolean(startDate || endDate || sceneId || threshold > 0 || maxCloud < 100);
+
   return (
-    <form className="panel-scroll" onSubmit={submit}>
-      <div className="field">
-        <label className="lbl" htmlFor="q">
-          Omni-Search (Text, Coords)
-        </label>
-        <div style={{ position: "relative" }}>
-          <textarea
-            id="q"
-            className="txt"
-            rows={2}
-            placeholder="e.g. aircraft parked on a runway, or [W, S, E, N]"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) submit(e);
-            }}
-          />
-          {/* Mock image upload icon as requested by the prompt */}
-          <span style={{ position: "absolute", bottom: "10px", right: "10px", cursor: "pointer", opacity: 0.5 }} title="Upload Image (UI Mock)">
-            📸
+    <div className="omni-container" ref={popoverRef}>
+      <form className="omni-bar tactical-glass" onSubmit={handleSubmit}>
+        <div className="omni-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
+
+        <input
+          type="text"
+          className="omni-input"
+          placeholder="Search terrain targets, or enter [W, S, E, N] coordinates..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+
+        <div className="omni-badges">
+          <span className={`omni-pill ${detectedType.toLowerCase().replace(" ", "-")}`}>
+            {detectedType}
           </span>
         </div>
-        <div className="hint">
-          Try:{" "}
-          {EXAMPLES.map((ex, i) => (
-            <span key={ex}>
-              {i > 0 && " · "}
-              <a
-                href="#"
-                style={{ color: "var(--cyan)", textDecoration: "none" }}
-                onClick={(e) => {
-                  e.preventDefault();
-                  setQuery(ex);
-                }}
-              >
-                {ex}
-              </a>
-            </span>
-          ))}
+
+        <div className="omni-actions">
+          <button
+            type="button"
+            className="omni-action-btn"
+            title="Temporal Change Detection (Prithvi-EO)"
+            onClick={onOpenChange}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            className="omni-action-btn"
+            title="Ingest Satellite Data"
+            onClick={onOpenIngest}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            className={`omni-action-btn filter-btn ${showFilters || hasActiveFilters ? "active" : ""}`}
+            title="Tactical Filters (Dates, Sensor, Clouds)"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+            </svg>
+            {hasActiveFilters && <span className="filter-active-dot" />}
+          </button>
+
+          <button type="submit" className={`omni-submit-btn ${busy ? "busy-pulse" : ""}`} disabled={busy || !query.trim()}>
+            {busy ? "SCANNING" : "SCAN"}
+          </button>
         </div>
+      </form>
+
+      <div className="quick-prompts">
+        <span className="quick-label">PROMPTS:</span>
+        {QUICK_PROMPTS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            className="quick-chip"
+            onClick={() => setQuery(p)}
+          >
+            {p}
+          </button>
+        ))}
       </div>
 
-      <div className="field">
-        <div className="row">
-          <div>
-            <label className="lbl">Start Date</label>
-            <input type="date" className="txt" value={startDate} onChange={e => setStartDate(e.target.value)} />
-          </div>
-          <div>
-            <label className="lbl">End Date</label>
-            <input type="date" className="txt" value={endDate} onChange={e => setEndDate(e.target.value)} />
-          </div>
-        </div>
-      </div>
-
-      <div className="field">
-        <div className="row">
-          <div>
-            <label className="lbl" htmlFor="limit">
-              Top K
-            </label>
-            <select
-              id="limit"
-              className="txt"
-              value={limit}
-              onChange={(e) => setLimit(e.target.value)}
-            >
-              {[10, 20, 50, 100].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="lbl" htmlFor="scene">
-              Scene
-            </label>
-            <select
-              id="scene"
-              className="txt"
-              value={sceneId}
-              onChange={(e) => setSceneId(e.target.value)}
-            >
-              <option value="">All scenes</option>
-              {scenes.map((s) => (
-                <option key={s.scene_id} value={s.scene_id}>
-                  {s.scene_id} ({s.tile_count})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div className="field">
-        <label className="lbl" htmlFor="thr">
-          Minimum similarity
-        </label>
-        <div className="range-row">
-          <input
-            id="thr"
-            type="range"
-            min="0"
-            max="0.4"
-            step="0.01"
-            value={threshold}
-            onChange={(e) => setThreshold(Number(e.target.value))}
-          />
-          <span className="range-val">{threshold === 0 ? "off" : threshold.toFixed(2)}</span>
-        </div>
-        <div className="hint">
-          Cosine similarity. RemoteCLIP text-image scores typically fall between
-          0.15 and 0.35, so anything above 0.40 returns nothing.
-        </div>
-      </div>
-
-      <div className="field">
-        <label className="lbl" htmlFor="cloud">
-          Maximum cloud cover
-        </label>
-        <div className="range-row">
-          <input
-            id="cloud"
-            type="range"
-            min="0"
-            max="100"
-            step="5"
-            value={maxCloud}
-            onChange={(e) => setMaxCloud(Number(e.target.value))}
-          />
-          <span className="range-val">{maxCloud === 100 ? "off" : `${maxCloud}%`}</span>
-        </div>
-      </div>
-
-      <div className="field">
-        <button className="btn primary block" type="submit" disabled={busy || !query.trim()}>
-          {busy ? "Searching…" : "Search imagery"}
-        </button>
-      </div>
-    </form>
+      <TacticalFilters
+        show={showFilters}
+        onClose={() => setShowFilters(false)}
+        scenes={scenes}
+        startDate={startDate}
+        setStartDate={setStartDate}
+        endDate={endDate}
+        setEndDate={setEndDate}
+        sceneId={sceneId}
+        setSceneId={setSceneId}
+        limit={limit}
+        setLimit={setLimit}
+        threshold={threshold}
+        setThreshold={setThreshold}
+        maxCloud={maxCloud}
+        setMaxCloud={setMaxCloud}
+        onApply={() => { setShowFilters(false); handleSubmit(); }}
+        onReset={handleResetFilters}
+      />
+    </div>
   );
 }

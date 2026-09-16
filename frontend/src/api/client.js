@@ -44,8 +44,9 @@ async function unwrap(promise) {
 export const api = {
   health: () => unwrap(http.get("/health")),
   scenes: () => unwrap(http.get("/scenes")),
+  datasets: () => unwrap(http.get("/datasets")),
 
-  search: ({ query, limit = 20, scoreThreshold = null, sceneIds = null, maxCloud = null }) =>
+  search: ({ query, limit = 20, scoreThreshold = null, sceneIds = null, maxCloud = null, boundingBox = null, dateRange = null }) =>
     unwrap(
       http.post("/search", {
         query,
@@ -53,6 +54,8 @@ export const api = {
         score_threshold: scoreThreshold,
         scene_ids: sceneIds,
         max_cloud: maxCloud,
+        bounding_box: boundingBox,
+        date_range: dateRange,
       })
     ),
 
@@ -99,6 +102,21 @@ export const api = {
     ),
 
   triageLog: () => unwrap(http.get("/triage")),
+
+  /** Trigger ingest_pipeline.py to download Sentinel-2 scenes from Element84. */
+  pipelineIngest: ({ startDate, endDate, bbox, maxCloud = 20, limit = 2 }) =>
+    unwrap(
+      http.post("/pipeline/ingest", {
+        start_date: startDate,
+        end_date: endDate,
+        bbox,
+        max_cloud: maxCloud,
+        limit,
+      })
+    ),
+
+  /** Poll the status of a pipeline download job. */
+  pipelineStatus: (jobId) => unwrap(http.get(`/pipeline/status/${jobId}`)),
 
   /** Returns a Blob so the caller can trigger a download without a server file. */
   exportReport: async ({ tileIds, query = null, includeUnverified = true }) => {

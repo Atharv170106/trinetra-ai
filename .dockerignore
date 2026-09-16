@@ -40,7 +40,7 @@ backend/audit_log.jsonl
 !README.md
 docs/
 
-# --- Online-only staging tool (must NOT enter the air-gapped image) ---
-backend/ingest_pipeline.py
+# --- Online-only staging tool (kept out of air-gapped image unless UI ingest is needed) ---
+# backend/ingest_pipeline.py is now INCLUDED so the UI can trigger downloads.
 backend/requirements-staging.txt
 backend/secure_drop_zone/

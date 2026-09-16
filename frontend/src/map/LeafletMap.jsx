@@ -24,15 +24,17 @@ const CYAN = "#38bdf8";
 const AMBER = "#f5a524";
 const GREEN = "#34d399";
 const RED = "#f87171";
+const MAGENTA = "#d946ef"; // For top change hit
 
 // India-centred default view: the operational area for this deployment.
 const DEFAULT_CENTER = [22.5, 79.0];
 const DEFAULT_ZOOM = 5;
 
-function strokeFor(hit, mode, verdict) {
+function strokeFor(hit, mode, verdict, isTopHit) {
   if (verdict === "confirmed") return GREEN;
   if (verdict === "false_alarm") return RED;
-  return mode === "change" ? AMBER : CYAN;
+  if (mode === "change") return isTopHit ? MAGENTA : AMBER;
+  return CYAN;
 }
 
 export default function LeafletMap({
@@ -41,40 +43,52 @@ export default function LeafletMap({
   selectedId,
   verdicts,
   showImagery,
+  meta,
   onSelect,
   onBoundingBoxChange,
 }) {
-  const containerRef = useRef(null);
-  const [mapInstance, setMapInstance] = useState(null);
-  const mapRef = useRef(null);
-  const overlaysRef = useRef(null);
-  const boxesRef = useRef(null);
-  const shapesRef = useRef(new Map());
-  // Refit only when the result set genuinely changes, not when a selection or a
-  // verdict does - otherwise clicking a card would yank the viewport around.
+  const container1Ref = useRef(null);
+  const container2Ref = useRef(null);
+  const [map1Instance, setMap1Instance] = useState(null);
+  
+  const map1Ref = useRef(null);
+  const map2Ref = useRef(null);
+  
+  const overlays1Ref = useRef(null);
+  const overlays2Ref = useRef(null);
+  const boxes1Ref = useRef(null);
+  const boxes2Ref = useRef(null);
+  
+  const shapes1Ref = useRef(new Map());
+  const shapes2Ref = useRef(new Map());
+
+  // Refit only when the result set genuinely changes
   const fitKeyRef = useRef("");
 
   // ---------------------------------------------------------------- init once
   useEffect(() => {
-    const map = L.map(containerRef.current, {
+    const config = {
       center: DEFAULT_CENTER,
       zoom: DEFAULT_ZOOM,
       zoomControl: true,
       attributionControl: true,
       preferCanvas: true,
-      // Chip overlays are small and numerous; fading them on every pan is
-      // visually noisy and costs frames on an 8 GB laptop.
       fadeAnimation: false,
-    });
+    };
 
-    graticuleLayer().addTo(map);
-    overlaysRef.current = L.layerGroup().addTo(map);
-    boxesRef.current = L.layerGroup().addTo(map);
+    const map1 = L.map(container1Ref.current, config);
+    const map2 = L.map(container2Ref.current, { ...config, zoomControl: false, attributionControl: false });
 
-    map.attributionControl.setPrefix(false);
-    map.attributionControl.addAttribution(
-      "Trinetra AI — offline graticule, no external tiles"
-    );
+    graticuleLayer().addTo(map1);
+    graticuleLayer().addTo(map2);
+
+    overlays1Ref.current = L.layerGroup().addTo(map1);
+    overlays2Ref.current = L.layerGroup().addTo(map2);
+    boxes1Ref.current = L.layerGroup().addTo(map1);
+    boxes2Ref.current = L.layerGroup().addTo(map2);
+
+    map1.attributionControl.setPrefix(false);
+    map1.attributionControl.addAttribution("Trinetra AI — offline graticule, no external tiles");
 
     const legend = L.control({ position: "bottomleft" });
     legend.onAdd = () => {
@@ -82,124 +96,197 @@ export default function LeafletMap({
       div.innerHTML = `
         <div><span class="swatch" style="background:${CYAN}"></span>Retrieval hit</div>
         <div><span class="swatch" style="background:${AMBER}"></span>Change detected</div>
+        <div><span class="swatch" style="background:${MAGENTA}"></span>Top change hit</div>
         <div><span class="swatch" style="background:${GREEN}"></span>Confirmed intel</div>
         <div><span class="swatch" style="background:${RED}"></span>False alarm</div>`;
       return div;
     };
-    legend.addTo(map);
+    legend.addTo(map1);
 
     const scale = L.control.scale({ imperial: false, position: "bottomright" });
-    scale.addTo(map);
+    scale.addTo(map1);
 
-    mapRef.current = map;
-    setMapInstance(map);
-    // Leaflet mis-measures its container if the parent grid settles after mount.
-    const raf = requestAnimationFrame(() => map.invalidateSize());
+    // Sync maps
+    let isSyncing = false;
+    map1.on('move', () => {
+      if (!isSyncing) {
+        isSyncing = true;
+        map2.setView(map1.getCenter(), map1.getZoom(), { animate: false });
+        isSyncing = false;
+      }
+    });
+    map2.on('move', () => {
+      if (!isSyncing) {
+        isSyncing = true;
+        map1.setView(map2.getCenter(), map2.getZoom(), { animate: false });
+        isSyncing = false;
+      }
+    });
+
+    map1Ref.current = map1;
+    map2Ref.current = map2;
+    setMap1Instance(map1);
+
+    const raf = requestAnimationFrame(() => {
+      map1.invalidateSize();
+      map2.invalidateSize();
+    });
 
     return () => {
       cancelAnimationFrame(raf);
-      map.remove();
-      mapRef.current = null;
-      setMapInstance(null);
-      shapesRef.current.clear();
+      map1.remove();
+      map2.remove();
+      map1Ref.current = null;
+      map2Ref.current = null;
+      setMap1Instance(null);
+      shapes1Ref.current.clear();
+      shapes2Ref.current.clear();
     };
   }, []);
 
+  // When mode changes, invalidate size so maps adjust to flex changes
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      if (map1Ref.current) map1Ref.current.invalidateSize();
+      if (map2Ref.current) map2Ref.current.invalidateSize();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [mode]);
+
   // --------------------------------------------------- redraw on result change
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
+    const map1 = map1Ref.current;
+    const map2 = map2Ref.current;
+    if (!map1 || !map2) return;
 
-    overlaysRef.current.clearLayers();
-    boxesRef.current.clearLayers();
-    shapesRef.current.clear();
+    overlays1Ref.current.clearLayers();
+    overlays2Ref.current.clearLayers();
+    boxes1Ref.current.clearLayers();
+    boxes2Ref.current.clearLayers();
+    shapes1Ref.current.clear();
+    shapes2Ref.current.clear();
 
     const bounds = [];
+    const isChange = mode === "change";
 
-    hits.forEach((hit) => {
+    hits.forEach((hit, index) => {
       const bbox = hit.wgs84_bounding_box;
       if (!bbox || bbox.length !== 4) return;
       const [w, s, e, n] = bbox;
-      const rect = [
-        [s, w],
-        [n, e],
-      ];
+      const rect = [[s, w], [n, e]];
       bounds.push(rect);
 
-      if (showImagery && hit.preview_url) {
-        L.imageOverlay(tilePreviewUrl(hit.tile_id), rect, {
-          opacity: 0.9,
-          interactive: false,
-          // A failed PNG must not leave a broken-image glyph on the map.
-          errorOverlayUrl:
-            "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
-        }).addTo(overlaysRef.current);
+      const isTopHit = isChange && index === 0;
+
+      if (showImagery) {
+        if (isChange && meta?.t1_scene_id && meta?.t2_scene_id) {
+          // Construct tile IDs for T1 and T2
+          const rowStr = hit.row.toString().padStart(4, "0");
+          const colStr = hit.col.toString().padStart(4, "0");
+          const t1_tile_id = `${meta.t1_scene_id}_r${rowStr}c${colStr}`;
+          const t2_tile_id = `${meta.t2_scene_id}_r${rowStr}c${colStr}`;
+
+          L.imageOverlay(tilePreviewUrl(t1_tile_id), rect, {
+            opacity: 0.9, interactive: false,
+            errorOverlayUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+          }).addTo(overlays1Ref.current);
+
+          L.imageOverlay(tilePreviewUrl(t2_tile_id), rect, {
+            opacity: 0.9, interactive: false,
+            errorOverlayUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+          }).addTo(overlays2Ref.current);
+        } else {
+          // Normal search mode
+          L.imageOverlay(tilePreviewUrl(hit.tile_id), rect, {
+            opacity: 0.9, interactive: false,
+            errorOverlayUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+          }).addTo(overlays1Ref.current);
+        }
       }
 
       const verdict = verdicts?.[hit.tile_id]?.verdict;
-      const box = L.rectangle(rect, {
-        color: strokeFor(hit, mode, verdict),
-        weight: 1.5,
-        opacity: 0.9,
-        fillOpacity: showImagery ? 0 : 0.12,
-      });
-
+      const color = strokeFor(hit, mode, verdict, isTopHit);
+      
+      const box1 = L.rectangle(rect, { color, weight: 1.5, opacity: 0.9, fillOpacity: showImagery ? 0 : 0.12 });
       const score = mode === "change" ? hit.change_score : hit.score;
-      box.bindTooltip(
-        `<b>${hit.tile_id}</b><br/>${mode === "change" ? "change" : "score"}: ${
-          score?.toFixed(4) ?? "—"
-        }`,
-        { direction: "top", opacity: 0.92 }
-      );
-      box.on("click", () => onSelect(hit.tile_id));
-      box.addTo(boxesRef.current);
-      shapesRef.current.set(hit.tile_id, box);
+      const tooltipHTML = `<b>${hit.tile_id}</b><br/>${mode === "change" ? "change" : "score"}: ${score?.toFixed(4) ?? "—"}`;
+      
+      box1.bindTooltip(tooltipHTML, { direction: "top", opacity: 0.92 });
+      box1.on("click", () => onSelect(hit.tile_id));
+      box1.addTo(boxes1Ref.current);
+      shapes1Ref.current.set(hit.tile_id, box1);
+
+      if (isChange) {
+        const box2 = L.rectangle(rect, { color, weight: 1.5, opacity: 0.9, fillOpacity: showImagery ? 0 : 0.12 });
+        box2.bindTooltip(tooltipHTML, { direction: "top", opacity: 0.92 });
+        box2.on("click", () => onSelect(hit.tile_id));
+        box2.addTo(boxes2Ref.current);
+        shapes2Ref.current.set(hit.tile_id, box2);
+      }
     });
 
-    // Fit only on a genuinely new result set.
     const fitKey = hits.map((h) => h.tile_id).join("|");
     if (bounds.length && fitKey !== fitKeyRef.current) {
-      map.fitBounds(L.latLngBounds(bounds.flat()), {
-        padding: [40, 40],
-        maxZoom: 14,
-      });
+      map1.fitBounds(L.latLngBounds(bounds.flat()), { padding: [40, 40], maxZoom: 14 });
+      // Map 2 will sync automatically via move event
       fitKeyRef.current = fitKey;
     }
     if (!hits.length) fitKeyRef.current = "";
-  }, [hits, mode, verdicts, showImagery, onSelect]);
+  }, [hits, mode, verdicts, showImagery, meta, onSelect]);
 
   // ------------------------------------------------------ highlight selection
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
+    const map1 = map1Ref.current;
+    if (!map1) return;
 
-    shapesRef.current.forEach((shape, tileId) => {
+    shapes1Ref.current.forEach((shape, tileId) => {
       const active = tileId === selectedId;
-      shape.setStyle({
-        weight: active ? 3 : 1.5,
-        // Restyling alone can leave the active box beneath its neighbours.
-        opacity: active ? 1 : 0.9,
-      });
+      shape.setStyle({ weight: active ? 3 : 1.5, opacity: active ? 1 : 0.9 });
+      if (active) shape.bringToFront();
+    });
+    
+    shapes2Ref.current.forEach((shape, tileId) => {
+      const active = tileId === selectedId;
+      shape.setStyle({ weight: active ? 3 : 1.5, opacity: active ? 1 : 0.9 });
       if (active) shape.bringToFront();
     });
 
-    if (selectedId && shapesRef.current.has(selectedId)) {
-      const target = shapesRef.current.get(selectedId).getBounds();
-      // Pan into view only if the chip is off-screen; never re-zoom under the
-      // analyst while they are working a target.
-      if (!map.getBounds().contains(target)) {
-        map.panTo(target.getCenter(), { animate: true, duration: 0.35 });
+    if (selectedId && shapes1Ref.current.has(selectedId)) {
+      const target = shapes1Ref.current.get(selectedId).getBounds();
+      if (!map1.getBounds().contains(target)) {
+        map1.panTo(target.getCenter(), { animate: true, duration: 0.35 });
       }
     }
   }, [selectedId, hits]);
 
+  const isChange = mode === "change";
+
   return (
     <>
-      <div ref={containerRef} role="application" aria-label="Imagery map" style={{ width: "100%", height: "100%" }} />
+      <div style={{ display: "flex", width: "100%", height: "100%", position: "relative" }}>
+        {/* Map 1 */}
+        <div style={{ flex: 1, position: "relative", borderRight: isChange ? "2px solid var(--border)" : "none" }}>
+          <div ref={container1Ref} role="application" aria-label="Imagery map 1" style={{ width: "100%", height: "100%" }} />
+          {isChange && meta?.t1_scene_id && (
+            <div style={{ position: "absolute", bottom: 30, left: 50, zIndex: 1000, background: "rgba(0,0,0,0.7)", padding: "4px 8px", borderRadius: "4px", color: "#fff", fontWeight: "bold" }}>
+              T1: {meta.t1_scene_id}
+            </div>
+          )}
+        </div>
+        
+        {/* Map 2 */}
+        <div style={{ flex: isChange ? 1 : 0, display: isChange ? "block" : "none", position: "relative" }}>
+          <div ref={container2Ref} role="application" aria-label="Imagery map 2" style={{ width: "100%", height: "100%" }} />
+          {isChange && meta?.t2_scene_id && (
+            <div style={{ position: "absolute", bottom: 30, left: 10, zIndex: 1000, background: "rgba(0,0,0,0.7)", padding: "4px 8px", borderRadius: "4px", color: "#fff", fontWeight: "bold" }}>
+              T2: {meta.t2_scene_id}
+            </div>
+          )}
+        </div>
+      </div>
       
-      {/* MapContainer emulation for MapDrawingTools */}
-      {mapInstance && (
-        <MapContext.Provider value={mapInstance}>
+      {map1Instance && (
+        <MapContext.Provider value={map1Instance}>
           <MapDrawingTools onBoundingBoxChange={onBoundingBoxChange} />
         </MapContext.Provider>
       )}

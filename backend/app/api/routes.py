@@ -26,6 +26,9 @@ from app.schemas.api import (
     HealthResponse,
     IngestRequest,
     IngestResponse,
+    DatasetSummary,
+    PipelineIngestRequest,
+    PipelineIngestResponse,
     SceneSummary,
     SearchHitModel,
     SearchRequest,
@@ -220,6 +223,41 @@ def tile_preview(tile_id: str) -> FileResponse:
     )
 
 
+@router.get("/datasets", response_model=list[DatasetSummary], tags=["datasets"])
+def list_datasets() -> list[DatasetSummary]:
+    """Scans local drop zones and sample data for available .SAFE folders or .tif files."""
+    datasets = []
+    
+    def scan_dir(dir_path: Path, location_name: str):
+        if not dir_path.exists():
+            return
+        
+        for item in dir_path.iterdir():
+            if item.name == ".gitkeep":
+                continue
+                
+            if item.is_dir() and ("_L2A" in item.name or ".SAFE" in item.name or "S2" in item.name or "DEMO" in item.name):
+                # Try to extract date like 20230105
+                date_match = re.search(r"_(20\d{6})T", item.name)
+                date_str = f"{date_match.group(1)[:4]}-{date_match.group(1)[4:6]}-{date_match.group(1)[6:8]}" if date_match else None
+                datasets.append(DatasetSummary(name=item.name, path=str(item), date=date_str, location=location_name))
+            elif item.is_file() and item.suffix.lower() in [".tif", ".tiff"]:
+                # Try to extract date
+                date_match = re.search(r"_(20\d{6})", item.name)
+                date_str = f"{date_match.group(1)[:4]}-{date_match.group(1)[4:6]}-{date_match.group(1)[6:8]}" if date_match else None
+                datasets.append(DatasetSummary(name=item.name, path=str(item), date=date_str, location=location_name))
+            # Also support generic folders starting with scene_
+            elif item.is_dir() and item.name.startswith("scene_"):
+                date_match = re.search(r"scene_(20\d{2})_(\d{2})", item.name)
+                date_str = f"{date_match.group(1)}-{date_match.group(2)}-01" if date_match else None
+                datasets.append(DatasetSummary(name=item.name, path=str(item), date=date_str, location=location_name))
+
+    scan_dir(settings.secure_drop_zone_dir, "secure_drop_zone")
+    scan_dir(settings.sample_data_dir, "sample_data")
+    
+    return sorted(datasets, key=lambda x: x.date or "", reverse=True)
+
+
 # --------------------------------------------------------- temporal change
 @router.post("/temporal-change", response_model=TemporalChangeResponse,
              tags=["change"])
@@ -409,6 +447,88 @@ def export_report(req: ExportRequest) -> Response:
         headers={"Content-Disposition": 'attachment; filename="trinetra_report.geojson"'},
         media_type="application/geo+json",
     )
+
+# --------------------------------------------------------- pipeline ingest
+import uuid
+
+_PIPELINE_JOBS: dict[str, dict] = {}
+
+
+@router.post("/pipeline/ingest", response_model=PipelineIngestResponse,
+             status_code=202, tags=["pipeline"])
+def pipeline_ingest(req: PipelineIngestRequest) -> PipelineIngestResponse:
+    """
+    Launch ingest_pipeline.py in a background thread to download Sentinel-2
+    scenes from Element84 into the secure drop zone.
+    """
+    # Prevent concurrent downloads
+    for jid, job in _PIPELINE_JOBS.items():
+        if job["status"] == "running":
+            return PipelineIngestResponse(
+                status="running",
+                message=f"A pipeline job is already running (job {jid}). Wait for it to finish.",
+                job_id=jid,
+            )
+
+    job_id = uuid.uuid4().hex[:12]
+    _PIPELINE_JOBS[job_id] = {
+        "status": "running",
+        "message": "Pipeline started",
+        "logs": [],
+    }
+
+    def _run():
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+            from ingest_pipeline import main as pipeline_main
+
+            argv = [
+                "--bbox", *[str(v) for v in req.bbox],
+                "--start", req.start_date,
+                "--end", req.end_date,
+                "--max-cloud", str(req.max_cloud),
+                "--limit", str(req.limit),
+                "--out", str(settings.secure_drop_zone_dir),
+            ]
+            logger.info("Pipeline job %s started: %s", job_id, " ".join(argv))
+            _PIPELINE_JOBS[job_id]["message"] = f"Downloading (args: {' '.join(argv)})"
+            rc = pipeline_main(argv)
+            if rc == 0:
+                _PIPELINE_JOBS[job_id]["status"] = "completed"
+                _PIPELINE_JOBS[job_id]["message"] = "Download completed successfully."
+            else:
+                _PIPELINE_JOBS[job_id]["status"] = "failed"
+                _PIPELINE_JOBS[job_id]["message"] = f"Pipeline exited with code {rc}."
+            logger.info("Pipeline job %s finished with rc=%d", job_id, rc)
+        except Exception as exc:
+            _PIPELINE_JOBS[job_id]["status"] = "failed"
+            _PIPELINE_JOBS[job_id]["message"] = f"Pipeline error: {exc}"
+            logger.exception("Pipeline job %s failed", job_id)
+
+    t = threading.Thread(target=_run, name=f"pipeline-{job_id}", daemon=True)
+    t.start()
+
+    return PipelineIngestResponse(
+        status="accepted",
+        message="Pipeline job started. Poll /api/pipeline/status/{job_id} for progress.",
+        job_id=job_id,
+    )
+
+
+@router.get("/pipeline/status/{job_id}", response_model=PipelineIngestResponse,
+            tags=["pipeline"])
+def pipeline_status(job_id: str) -> PipelineIngestResponse:
+    """Check the status of a pipeline download job."""
+    job = _PIPELINE_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, f"No pipeline job with id {job_id}")
+    return PipelineIngestResponse(
+        status=job["status"],
+        message=job["message"],
+        job_id=job_id,
+    )
+
 
 # ------------------------------------------------------------- watchdog stream
 import asyncio
