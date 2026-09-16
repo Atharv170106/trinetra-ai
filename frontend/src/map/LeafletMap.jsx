@@ -261,6 +261,12 @@ export default function LeafletMap({
 
   const isChange = mode === "change";
 
+  const formatDate = (sceneId) => {
+    if (!sceneId) return "";
+    const match = sceneId.match(/_(\d{4})(\d{2})(\d{2})T/);
+    return match ? ` (${match[1]}-${match[2]}-${match[3]})` : "";
+  };
+
   return (
     <>
       <div style={{ display: "flex", width: "100%", height: "100%", position: "relative" }}>
@@ -269,7 +275,7 @@ export default function LeafletMap({
           <div ref={container1Ref} role="application" aria-label="Imagery map 1" style={{ width: "100%", height: "100%" }} />
           {isChange && meta?.t1_scene_id && (
             <div style={{ position: "absolute", bottom: 30, left: 200, zIndex: 1000, background: "rgba(0,0,0,0.7)", padding: "4px 8px", borderRadius: "4px", color: "#fff", fontWeight: "bold" }}>
-              T1: {meta.t1_scene_id}
+              T1: {meta.t1_scene_id}{formatDate(meta.t1_scene_id)}
             </div>
           )}
         </div>
@@ -279,7 +285,7 @@ export default function LeafletMap({
           <div ref={container2Ref} role="application" aria-label="Imagery map 2" style={{ width: "100%", height: "100%" }} />
           {isChange && meta?.t2_scene_id && (
             <div style={{ position: "absolute", bottom: 30, left: 10, zIndex: 1000, background: "rgba(0,0,0,0.7)", padding: "4px 8px", borderRadius: "4px", color: "#fff", fontWeight: "bold" }}>
-              T2: {meta.t2_scene_id}
+              T2: {meta.t2_scene_id}{formatDate(meta.t2_scene_id)}
             </div>
           )}
         </div>
