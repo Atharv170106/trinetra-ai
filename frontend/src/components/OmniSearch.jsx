@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import TacticalFilters from "./TacticalFilters";
-import client from "../api/client";
+import { api as client } from "../api/client";
 
 const QUICK_PROMPTS = [
   "aircraft on tarmac",

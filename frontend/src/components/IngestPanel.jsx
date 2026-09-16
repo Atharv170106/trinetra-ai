@@ -93,6 +93,7 @@ export default function IngestPanel({ scenes, busy, report, onIngest, onRefresh 
           pollRef.current = null;
           if (res.status === "completed") {
             await refreshDatasets();
+            if (onRefresh) await onRefresh();
           }
         }
       } catch (err) {
