@@ -145,6 +145,8 @@ export const api = {
       throw new Error(describe(error));
     }
   },
+
+  setWatchdogAoi: (bbox) => unwrap(http.post("/watchdog/aoi", { bbox })),
 };
 
 export const tilePreviewUrl = (tileId) => `/api/tiles/${encodeURIComponent(tileId)}`;

@@ -37,6 +37,7 @@ from app.schemas.api import (
     TemporalChangeResponse,
     TriageRequest,
     TriageResponse,
+    WatchdogAOIRequest,
 )
 from app.services import audit
 from app.services.change_detect import compare_scenes, to_geojson
@@ -198,6 +199,13 @@ def search(req: SearchRequest) -> SearchResponse:
         elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
         hits=[_hit_to_model(h) for h in hits],
     )
+
+
+@router.post("/watchdog/aoi", tags=["watchdog"])
+def set_watchdog_aoi(req: WatchdogAOIRequest):
+    """Set or clear the global AOI for the background watchdog."""
+    state.set_watchdog_aoi(req.bbox)
+    return {"status": "ok", "aoi": req.bbox}
 
 
 @router.get("/scenes", response_model=list[SceneSummary], tags=["search"])

@@ -5,6 +5,7 @@ class PriorityQueueState:
     def __init__(self):
         self._lock = threading.Lock()
         self._last_search_time = 0.0
+        self._watchdog_aoi: list[float] | None = None
 
     def mark_search(self):
         with self._lock:
@@ -13,6 +14,14 @@ class PriorityQueueState:
     def should_pause_watchdog(self, cooldown_seconds: float = 30.0) -> bool:
         with self._lock:
             return (time.time() - self._last_search_time) < cooldown_seconds
+
+    def set_watchdog_aoi(self, bbox: list[float] | None):
+        with self._lock:
+            self._watchdog_aoi = bbox
+
+    def get_watchdog_aoi(self) -> list[float] | None:
+        with self._lock:
+            return self._watchdog_aoi
 
 state = PriorityQueueState()
 import asyncio

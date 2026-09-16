@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import TacticalFilters from "./TacticalFilters";
+import client from "../api/client";
 
 const QUICK_PROMPTS = [
   "aircraft on tarmac",
@@ -18,6 +19,7 @@ export default function OmniSearch({ scenes = [], busy, drawnBbox, onSearch, onO
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [detectedType, setDetectedType] = useState("SEMANTIC");
+  const [isWatchdogArmed, setIsWatchdogArmed] = useState(false);
   const popoverRef = useRef(null);
 
   useEffect(() => {
@@ -27,8 +29,19 @@ export default function OmniSearch({ scenes = [], busy, drawnBbox, onSearch, onO
     } else if (query.startsWith("[")) {
       setQuery("");
       setDetectedType("SEMANTIC");
+      if (isWatchdogArmed) handleToggleWatchdog(false);
     }
   }, [drawnBbox]);
+
+  const handleToggleWatchdog = async (forceState) => {
+    const nextState = forceState !== undefined ? forceState : !isWatchdogArmed;
+    try {
+      await client.setWatchdogAoi(nextState ? drawnBbox : null);
+      setIsWatchdogArmed(nextState);
+    } catch (err) {
+      console.error("Failed to set watchdog AOI:", err);
+    }
+  };
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -117,6 +130,19 @@ export default function OmniSearch({ scenes = [], busy, drawnBbox, onSearch, onO
         </div>
 
         <div className="omni-actions">
+          <button
+            type="button"
+            className={`omni-action-btn ${isWatchdogArmed ? "active" : ""}`}
+            title="Arm Air-Gapped AOI Watchdog"
+            onClick={() => handleToggleWatchdog()}
+            disabled={!drawnBbox}
+            style={isWatchdogArmed ? { color: "var(--green)" } : {}}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+          </button>
+
           <button
             type="button"
             className="omni-action-btn"

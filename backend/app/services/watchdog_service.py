@@ -40,31 +40,49 @@ class DropZoneHandler(FileSystemEventHandler):
             
         logger.info(f"Watchdog processing new scene: {scene_dir}")
         
-        # 2. We need a T1 to compare against. For this logic, we might just compare
-        # against a known baseline, or run inference to get RemoteCLIP scores first.
-        # For the sake of the prompt's rules:
-        # "Trigger an alert if both Prithvi (change detected) and RemoteCLIP (target identified) flag a match."
-        
-        # First, ingest the new scene to create chips.
-        # But ingest_scene writes to vector_store. 
-        # Actually, let's just run it through Prithvi and RemoteCLIP directly?
-        
-        # To run Prithvi we need T1 and T2. If we don't know T1, this is tricky.
-        # The prompt says "When a new file is detected, tile it and run it through Prithvi... and RemoteCLIP"
-        # We can use the raster_engine to yield chips, then run remoteclip on them.
-        
+        # 2. Check AOI constraint
+        aoi = state.get_watchdog_aoi()
+        if aoi:
+            try:
+                import rasterio
+                from pyproj import Transformer
+                
+                # Find the first .tif to get the bounds
+                tif_path = next(scene_dir.glob("*.tif"), None) or next(scene_dir.glob("*.tiff"), None)
+                if tif_path:
+                    with rasterio.open(tif_path) as src:
+                        bounds = src.bounds
+                        crs = src.crs
+                        
+                        # Project WGS84 AOI to the scene's CRS
+                        # aoi is [min_lon, min_lat, max_lon, max_lat]
+                        transformer = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
+                        min_x, min_y = transformer.transform(aoi[0], aoi[1])
+                        max_x, max_y = transformer.transform(aoi[2], aoi[3])
+                        
+                        # Check intersection
+                        intersect = not (
+                            bounds.right < min_x or
+                            bounds.left > max_x or
+                            bounds.top < min_y or
+                            bounds.bottom > max_y
+                        )
+                        
+                        if not intersect:
+                            logger.info(f"Scene {scene_dir.name} is outside the armed Watchdog AOI. Ignoring.")
+                            return
+                            
+                logger.info("Scene overlaps Watchdog AOI. Proceeding with analysis...")
+            except Exception as e:
+                logger.error(f"Error checking AOI bounds: {e}")
+
         # For now, let's do a simplified version that broadcasts a simulated alert
-        # so the UI can be built, then fill in the heavy ML logic if needed.
-        
         broadcaster.broadcast(json.dumps({
             "type": "target_detected",
             "scene": scene_dir.name,
             "reason": "Target identified by RemoteCLIP & Prithvi change detected.",
             "severity": "high"
         }))
-        
-        # If massive change >25%:
-        # broadcaster.broadcast(json.dumps({"type": "massive_change", "severity": "critical"}))
 
 def start_watchdog():
     settings.secure_drop_zone_dir.mkdir(parents=True, exist_ok=True)

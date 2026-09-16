@@ -13,6 +13,12 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.config import settings
 
+class WatchdogAOIRequest(BaseModel):
+    bbox: list[float] | None = Field(
+        None, min_length=4, max_length=4,
+        description="GeoJSON bounding box [min_lon, min_lat, max_lon, max_lat] or null to clear."
+    )
+
 
 # ------------------------------------------------------------------- ingest
 class IngestRequest(BaseModel):
