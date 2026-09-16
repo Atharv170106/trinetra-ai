@@ -77,25 +77,26 @@ The backend API, frontend bundle, and the Qdrant vector database are orchestrate
 
 ---
 
-## 📊 Generating and Ingesting Demo Data
+## 📡 Ingesting Satellite Imagery
 
-Because Trinetra AI is fully offline, the Qdrant vector database starts empty. Follow these steps to generate synthetic Sentinel-2 demo scenes and ingest them to test the dashboard.
+Trinetra AI uses a background watchdog service to automatically monitor and ingest new scenes from a secure drop zone. To acquire real data, use the included STAC ingestion script on an internet-connected machine.
 
-1. **Generate Demo Scenes**
-   Use the included Python script to synthesize co-registered scenes. This is run locally using your Python virtual environment:
+1. **Download Sentinel-2 COGs**
+   Run the `ingest_pipeline.py` script to fetch real Sentinel-2 scenes for a bounding box:
    ```powershell
-   .\venv\Scripts\python.exe backend\make_demo_scenes.py
+   .\venv\Scripts\python.exe backend\ingest_pipeline.py --bbox 72.80 18.90 73.05 19.15 --start 2025-01-01 --end 2025-03-31 --limit 2
    ```
-   *(This generates `DEMO_T43RGN_20240115T052131_L2A` and `DEMO_T43RGN_20260115T052131_L2A` inside the `backend/sample_data/` directory)*
+   *(This downloads the required bands directly into `backend/secure_drop_zone/`)*
 
-2. **Ingest the Scenes via Dashboard**
-   - Open the web dashboard ([http://localhost:8080](http://localhost:8080)) and go to the **Ingest** tab.
-   - Enter `DEMO_T43RGN_20240115T052131_L2A` as the source and click **Ingest**.
-   - Enter `DEMO_T43RGN_20260115T052131_L2A` as the source and click **Ingest**.
+2. **Automated Background Ingestion (Watchdog)**
+   The air-gapped system automatically detects new folders in `backend/secure_drop_zone/`. 
+   - New scenes are tiled and processed.
+   - If significant changes or matches are found, **Real-Time Alerts** will appear in the UI.
 
 3. **Explore Features**
-   - **Search Tab**: Type semantic queries (e.g., "water", "concrete pad") to search through the ingested chips.
-   - **Change Tab**: Compare the T1 (2024) and T2 (2026) scenes to analyze temporal changes.
+   - **Search Tab**: Type semantic queries (e.g., "aircraft on runway") or use the Leaflet-Geoman draw tools to select a bounding box constraint.
+   - **Change Tab**: Select two ingested scenes to analyze temporal changes.
+   - **Triage**: Click "False Alarm" on any alerts to move the false positive image chips into `backend/training_data/`.
 
 ---
 
