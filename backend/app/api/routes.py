@@ -510,6 +510,14 @@ def pipeline_ingest(req: PipelineIngestRequest) -> PipelineIngestResponse:
     }
 
     def _run():
+        import io
+        import logging
+        log_stream = io.StringIO()
+        handler = logging.StreamHandler(log_stream)
+        handler.setFormatter(logging.Formatter("%(levelname)-7s %(message)s"))
+        pipeline_logger = logging.getLogger("ingest_pipeline")
+        pipeline_logger.addHandler(handler)
+        
         try:
             import sys
             sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -525,18 +533,34 @@ def pipeline_ingest(req: PipelineIngestRequest) -> PipelineIngestResponse:
             ]
             logger.info("Pipeline job %s started: %s", job_id, " ".join(argv))
             _PIPELINE_JOBS[job_id]["message"] = f"Downloading (args: {' '.join(argv)})"
+            
+            # Temporary elevate ingest_pipeline logging to catch everything
+            old_level = pipeline_logger.level
+            pipeline_logger.setLevel(logging.INFO)
+            
             rc = pipeline_main(argv)
+            
+            pipeline_logger.setLevel(old_level)
+            
             if rc == 0:
                 _PIPELINE_JOBS[job_id]["status"] = "completed"
                 _PIPELINE_JOBS[job_id]["message"] = "Download completed successfully."
             else:
                 _PIPELINE_JOBS[job_id]["status"] = "failed"
-                _PIPELINE_JOBS[job_id]["message"] = f"Pipeline exited with code {rc}."
+                logs = log_stream.getvalue()
+                err_msg = f"Pipeline exited with code {rc}."
+                for line in logs.splitlines():
+                    if "ERROR" in line:
+                        err_msg = line.split("ERROR", 1)[-1].strip()
+                        break
+                _PIPELINE_JOBS[job_id]["message"] = err_msg
             logger.info("Pipeline job %s finished with rc=%d", job_id, rc)
         except Exception as exc:
             _PIPELINE_JOBS[job_id]["status"] = "failed"
             _PIPELINE_JOBS[job_id]["message"] = f"Pipeline error: {exc}"
             logger.exception("Pipeline job %s failed", job_id)
+        finally:
+            pipeline_logger.removeHandler(handler)
 
     t = threading.Thread(target=_run, name=f"pipeline-{job_id}", daemon=True)
     t.start()

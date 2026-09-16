@@ -166,6 +166,8 @@ def compare_scenes(
             valid_batch = []
             t1_stacks = []
             t2_stacks = []
+            t1_raw_stacks = []
+            t2_raw_stacks = []
             
             # Prepare the batch
             for r, c in batch:
@@ -182,9 +184,12 @@ def compare_scenes(
                     continue
                     
                 try:
-                    # Normalization happens sequentially, but inference will be batched
-                    t1_stacks.append(normalize_for_prithvi(s1.read_tile_stack(r, c)))
-                    t2_stacks.append(normalize_for_prithvi(s2.read_tile_stack(r, c)))
+                    raw1 = s1.read_tile_stack(r, c)
+                    raw2 = s2.read_tile_stack(r, c)
+                    t1_raw_stacks.append(raw1)
+                    t2_raw_stacks.append(raw2)
+                    t1_stacks.append(normalize_for_prithvi(raw1))
+                    t2_stacks.append(normalize_for_prithvi(raw2))
                     valid_batch.append((r, c, q1, q2))
                 except Exception as exc:
                     report.errors.append(f"r{r}c{c}: prep failed: {exc}")
@@ -198,15 +203,37 @@ def compare_scenes(
             with torch.no_grad():
                 results = prithvi.compare_batch(t1_stacks, t2_stacks)
             
-            # Process results
-            for (r, c, q1, q2), result in zip(valid_batch, results):
+            # Process results and save PNGs for frontend preview
+            from PIL import Image
+            from app.core.config import settings
+            from app.services.raster_engine import to_rgb_uint8
+
+            for (r, c, q1, q2), result, raw1, raw2 in zip(valid_batch, results, t1_raw_stacks, t2_raw_stacks):
                 report.tiles_compared += 1
                 if result.change_score < min_change_score:
                     continue
 
+                t1_id = f"{s1.scene_id}_r{r:04d}c{c:04d}"
+                t2_id = f"{s2.scene_id}_r{r:04d}c{c:04d}"
+
+                def ensure_preview(scene_id: str, tile_id: str, stack_dn: np.ndarray):
+                    """Extract B04,B03,B02 from Prithvi 6-band stack (idx 2, 1, 0) and save PNG."""
+                    preview_dir = settings.tiles_cache_dir / scene_id
+                    preview_dir.mkdir(parents=True, exist_ok=True)
+                    out_path = preview_dir / f"{tile_id}.png"
+                    if not out_path.exists():
+                        # Prithvi bands: [B02, B03, B04, B8A, B11, B12]
+                        # We want RGB: B04, B03, B02 -> indices [2, 1, 0]
+                        rgb_dn = np.stack([stack_dn[2], stack_dn[1], stack_dn[0]], axis=0)
+                        rgb_uint8 = to_rgb_uint8(rgb_dn)
+                        Image.fromarray(rgb_uint8).save(out_path, optimize=True)
+
+                ensure_preview(s1.scene_id, t1_id, raw1)
+                ensure_preview(s2.scene_id, t2_id, raw2)
+
                 report.results.append(
                     ChangeTile(
-                        tile_id=f"{s1.scene_id}_r{r:04d}c{c:04d}",
+                        tile_id=t1_id,
                         row=r,
                         col=c,
                         wgs84_bounding_box=list(s1.window_bounds_wgs84(s1.tile_window(r, c))),

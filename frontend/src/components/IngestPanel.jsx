@@ -113,15 +113,22 @@ export default function IngestPanel({ scenes, busy, report, onIngest, onRefresh 
       setDlMessage("Coordinates not loaded yet. Try again in a moment.");
       return;
     }
+    
+    // Calculate end date (+30 days) to give STAC a window to find a scene
+    const start = new Date(dlDate);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 30);
+    const endDateStr = end.toISOString().split('T')[0];
+
     setDlStatus("accepted");
-    setDlMessage("Submitting download job...");
+    setDlMessage("Searching for imagery in a 30-day window...");
     try {
       const res = await api.pipelineIngest({
         startDate: dlDate,
-        endDate: dlDate,
+        endDate: endDateStr,
         bbox: dlBbox,
         maxCloud: 20,
-        limit: 1,
+        limit: 1, // Only get the single best scene in this window
       });
       setDlJobId(res.job_id);
       setDlStatus(res.status);
@@ -155,7 +162,7 @@ export default function IngestPanel({ scenes, busy, report, onIngest, onRefresh 
           🛰️ Download New Satellite Data
         </h3>
         <div className="hint" style={{ marginBottom: "0.75rem" }}>
-          Select a date to download Sentinel-2 imagery for the same region as your existing data.
+          Select a target date. The system will search up to 30 days forward to find the clearest Sentinel-2 scene.
         </div>
 
         <div className="field">
