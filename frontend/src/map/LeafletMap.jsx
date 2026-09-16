@@ -268,7 +268,7 @@ export default function LeafletMap({
         <div style={{ flex: 1, position: "relative", borderRight: isChange ? "2px solid var(--border)" : "none" }}>
           <div ref={container1Ref} role="application" aria-label="Imagery map 1" style={{ width: "100%", height: "100%" }} />
           {isChange && meta?.t1_scene_id && (
-            <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000, background: "rgba(0,0,0,0.7)", padding: "4px 8px", borderRadius: "4px", color: "#fff", fontWeight: "bold" }}>
+            <div style={{ position: "absolute", bottom: 30, left: 200, zIndex: 1000, background: "rgba(0,0,0,0.7)", padding: "4px 8px", borderRadius: "4px", color: "#fff", fontWeight: "bold" }}>
               T1: {meta.t1_scene_id}
             </div>
           )}
@@ -278,7 +278,7 @@ export default function LeafletMap({
         <div style={{ flex: isChange ? 1 : 0, display: isChange ? "block" : "none", position: "relative" }}>
           <div ref={container2Ref} role="application" aria-label="Imagery map 2" style={{ width: "100%", height: "100%" }} />
           {isChange && meta?.t2_scene_id && (
-            <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000, background: "rgba(0,0,0,0.7)", padding: "4px 8px", borderRadius: "4px", color: "#fff", fontWeight: "bold" }}>
+            <div style={{ position: "absolute", bottom: 30, left: 10, zIndex: 1000, background: "rgba(0,0,0,0.7)", padding: "4px 8px", borderRadius: "4px", color: "#fff", fontWeight: "bold" }}>
               T2: {meta.t2_scene_id}
             </div>
           )}
