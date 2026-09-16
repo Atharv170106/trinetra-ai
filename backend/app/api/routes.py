@@ -532,7 +532,7 @@ def pipeline_ingest(req: PipelineIngestRequest) -> PipelineIngestResponse:
                 "--out", str(settings.secure_drop_zone_dir),
             ]
             logger.info("Pipeline job %s started: %s", job_id, " ".join(argv))
-            _PIPELINE_JOBS[job_id]["message"] = f"Downloading (args: {' '.join(argv)})"
+            _PIPELINE_JOBS[job_id]["message"] = f"Querying Earth Search for imagery between {req.start_date} and {req.end_date}..."
             
             # Temporary elevate ingest_pipeline logging to catch everything
             old_level = pipeline_logger.level
