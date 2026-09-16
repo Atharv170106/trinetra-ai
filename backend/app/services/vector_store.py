@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # to a full scan once the collection grows past a few thousand points.
 _INDEXED_FIELDS: dict[str, str] = {
     "scene_id": "keyword",
-    "acquisition_timestamp": "keyword",
+    "acquisition_timestamp": "datetime",
     "scl_cloud_coverage": "float",
 }
 
@@ -178,6 +178,7 @@ class VectorStore:
         schema_map = {
             "keyword": models.PayloadSchemaType.KEYWORD,
             "float": models.PayloadSchemaType.FLOAT,
+            "datetime": models.PayloadSchemaType.DATETIME,
         }
         for field, kind in _INDEXED_FIELDS.items():
             try:
@@ -285,6 +286,7 @@ class VectorStore:
         scene_ids: Sequence[str] | None = None,
         max_cloud: float | None = None,
         bbox: tuple[float, float, float, float] | None = None,
+        date_range: tuple[str, str] | None = None,
     ):
         """Compose an optional Qdrant filter. Returns None when unconstrained."""
         from qdrant_client import models
@@ -304,10 +306,18 @@ class VectorStore:
                     range=models.Range(lte=float(max_cloud)),
                 )
             )
+        
+        # Add datetime range filter
+        if date_range is not None:
+            must.append(
+                models.FieldCondition(
+                    key="acquisition_timestamp",
+                    range=models.DatetimeRange(gte=date_range[0], lte=date_range[1])
+                )
+            )
+
         if bbox is not None:
-            # wgs84_bounding_box is stored as [W, S, E, N]; a geo filter would
-            # need a separate geo payload field, so this is left to the caller
-            # to post-filter. Flagged rather than silently ignored.
+            # bbox filtering is left to the caller to post-filter.
             logger.debug("bbox filtering is applied client-side, not in Qdrant")
         return models.Filter(must=must) if must else None
 
@@ -319,6 +329,8 @@ class VectorStore:
         score_threshold: float | None = None,
         scene_ids: Sequence[str] | None = None,
         max_cloud: float | None = None,
+        bounding_box: tuple[float, float, float, float] | None = None,
+        date_range: tuple[str, str] | None = None,
     ) -> list[SearchHit]:
         """
         Cosine similarity search. Uses query_points(); client.search() was

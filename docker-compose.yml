@@ -2,7 +2,7 @@
 #
 #   docker compose up -d --build      first run (needs network for the build)
 #   docker compose logs -f trinetra   watch the boot
-#   open http://localhost:8000
+#   open http://localhost:8080
 #
 # Air-gap posture: no image pulls at runtime, no CDNs, no external APIs. The app
 # reaches Qdrant over the internal compose network (http://qdrant:6333). Qdrant's
@@ -52,7 +52,7 @@ services:
       qdrant:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "8080:8000"
     environment:
       TRINETRA_QDRANT_URL: http://qdrant:6333
       TRINETRA_LOG_LEVEL: INFO

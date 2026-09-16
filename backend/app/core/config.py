@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     model_weights_dir: Path = BACKEND_ROOT / "model_weights"
     sample_data_dir: Path = BACKEND_ROOT / "sample_data"
     tiles_cache_dir: Path = BACKEND_ROOT / "tiles_cache"
+    secure_drop_zone_dir: Path = BACKEND_ROOT / "secure_drop_zone"
+    training_data_dir: Path = BACKEND_ROOT / "training_data"
 
     remoteclip_checkpoint: Path = model_weights_dir / "RemoteCLIP-ViT-B-32.pt"
     prithvi_dir: Path = model_weights_dir / "Prithvi-EO-2.0-300M"

@@ -150,9 +150,13 @@ def ingest(req: IngestRequest) -> IngestResponse:
 
 
 # ------------------------------------------------------------------- search
+from app.core.state import state
+
+
 @router.post("/search", response_model=SearchResponse, tags=["search"])
 def search(req: SearchRequest) -> SearchResponse:
-    """Natural-language retrieval over indexed chips."""
+    """Semantic vector search against the indexed Sentinel-2 chips."""
+    state.mark_search()
     started = time.perf_counter()
     try:
         with _GPU_LOCK:
@@ -161,15 +165,29 @@ def search(req: SearchRequest) -> SearchResponse:
         raise HTTPException(503, f"Text encoder unavailable: {exc}") from exc
 
     try:
-        hits = vector_store.search(
+        raw_hits = vector_store.search(
             qvec,
-            limit=req.limit,
+            limit=req.limit * 3 if req.bounding_box else req.limit, # Fetch more to account for post-filtering
             score_threshold=req.score_threshold,
             scene_ids=req.scene_ids,
             max_cloud=req.max_cloud,
+            date_range=req.date_range,
         )
     except VectorStoreError as exc:
         raise HTTPException(503, f"Vector store error: {exc}") from exc
+
+    hits = []
+    for h in raw_hits:
+        if req.bounding_box and h.wgs84_bounding_box:
+            min_lon, min_lat, max_lon, max_lat = req.bounding_box
+            hw, hs, he, hn = h.wgs84_bounding_box
+            # Check intersection
+            if not (he < min_lon or hw > max_lon or hn < min_lat or hs > max_lat):
+                hits.append(h)
+        else:
+            hits.append(h)
+        if len(hits) == req.limit:
+            break
 
     return SearchResponse(
         query=req.query,
@@ -281,6 +299,38 @@ def triage(req: TriageRequest) -> TriageResponse:
         total_entries=audit.count(),
     )
 
+import shutil
+
+@router.post("/triage/false_alarm", response_model=TriageResponse, tags=["triage"])
+def triage_false_alarm(req: TriageRequest) -> TriageResponse:
+    """Record a false alarm and move the patch to training_data/."""
+    try:
+        # First record the verdict
+        req.verdict = "False Alarm"
+        entry = audit.record(
+            req.tile_id, req.verdict,
+            query=req.query, analyst_note=req.analyst_note,
+        )
+        
+        # Now move the file
+        parts = _split_tile_id(req.tile_id)
+        if parts:
+            scene, _, _ = parts
+            src_png = settings.tiles_cache_dir / scene / f"{req.tile_id}.png"
+            if src_png.exists():
+                settings.training_data_dir.mkdir(parents=True, exist_ok=True)
+                dst_png = settings.training_data_dir / f"{req.tile_id}.png"
+                shutil.copy2(src_png, dst_png)
+                
+    except audit.AuditError as exc:
+        raise HTTPException(500, str(exc)) from exc
+    return TriageResponse(
+        tile_id=entry["tile_id"],
+        verdict=entry["verdict"],
+        logged_at=entry["logged_at"],
+        total_entries=audit.count(),
+    )
+
 
 @router.get("/triage", tags=["triage"])
 def triage_log(
@@ -359,3 +409,28 @@ def export_report(req: ExportRequest) -> Response:
         headers={"Content-Disposition": 'attachment; filename="trinetra_report.geojson"'},
         media_type="application/geo+json",
     )
+
+# ------------------------------------------------------------- watchdog stream
+import asyncio
+from fastapi.responses import StreamingResponse
+from app.core.state import broadcaster
+
+async def event_generator(q: asyncio.Queue):
+    try:
+        while True:
+            message = await q.get()
+            yield f"data: {message}\n\n"
+    except asyncio.CancelledError:
+        pass
+
+@router.get("/watchdog/stream", tags=["watchdog"])
+async def watchdog_stream():
+    """SSE endpoint for watchdog alerts."""
+    q = broadcaster.subscribe()
+    async def sse_wrapper():
+        try:
+            async for msg in event_generator(q):
+                yield msg
+        finally:
+            broadcaster.unsubscribe(q)
+    return StreamingResponse(sse_wrapper(), media_type="text/event-stream")

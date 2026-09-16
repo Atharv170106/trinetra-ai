@@ -29,7 +29,7 @@ function describe(error) {
     return `${status}: ${error.response.statusText || "request failed"}`;
   }
   if (error.code === "ECONNABORTED") return "Request timed out.";
-  return "Cannot reach the Trinetra backend. Is uvicorn running on port 8000?";
+  return "Cannot reach the Trinetra backend. Is it running on port 8080 (or 8000)?";
 }
 
 async function unwrap(promise) {

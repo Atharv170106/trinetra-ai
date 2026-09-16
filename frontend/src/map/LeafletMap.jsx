@@ -14,6 +14,8 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "@geoman-io/leaflet-geoman-free";
+import "@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css";
 
 import { graticuleLayer } from "./GraticuleLayer";
 import { tilePreviewUrl } from "../api/client";
@@ -40,6 +42,7 @@ export default function LeafletMap({
   verdicts,
   showImagery,
   onSelect,
+  onBoundingBoxChange,
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -86,6 +89,32 @@ export default function LeafletMap({
 
     const scale = L.control.scale({ imperial: false, position: "bottomright" });
     scale.addTo(map);
+
+    map.pm.addControls({
+      position: 'topright',
+      drawMarker: false,
+      drawCircleMarker: false,
+      drawPolyline: false,
+      drawPolygon: false,
+      drawRectangle: true,
+      drawCircle: false,
+      drawText: false,
+      cutPolygon: false,
+    });
+
+    map.on('pm:create', (e) => {
+      const bounds = e.layer.getBounds();
+      const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
+      // Format to max 4 decimal places for cleanliness
+      const roundedBbox = bbox.map(b => parseFloat(b.toFixed(4)));
+      if (onBoundingBoxChange) onBoundingBoxChange(roundedBbox);
+    });
+
+    map.on('pm:remove', (e) => {
+      // Clear bounding box if the drawn layer is removed
+      // Assuming only one layer is drawn for simplicity.
+      if (onBoundingBoxChange) onBoundingBoxChange(null);
+    });
 
     mapRef.current = map;
     // Leaflet mis-measures its container if the parent grid settles after mount.

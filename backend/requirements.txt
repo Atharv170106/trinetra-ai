@@ -41,6 +41,9 @@ safetensors==0.4.5
 einops==0.8.0                     # required by prithvi_mae.py's 3D ViT
 bitsandbytes>=0.43.0              # emergency-only 8-bit path; native Windows wheels since 0.41
 
+# --- Background Tasks ---
+watchdog==6.0.0
+
 # --- Export / Utilities ---
 geojson==3.1.0                    # /export report output (Phase 5)
 tqdm==4.67.1

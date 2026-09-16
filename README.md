@@ -14,7 +14,10 @@ The system ingests massive Sentinel-2 / Landsat Cloud-Optimized GeoTIFFs (COGs),
 ## ✨ Features
 
 - **Semantic Search**: Search for structures, vehicles, or geographical features using natural language queries.
+- **Omni-Search & Map Drawing**: Use regex-powered text/coordinate parsing or draw spatial bounding boxes directly on the map via Leaflet-Geoman to constrain searches.
+- **Air-Gapped AOI Watchdog**: A background service automatically monitors a secure drop zone for new GeoTIFFs, running them through a two-step Prithvi and RemoteCLIP verification to stream Real-Time Alerts (SSE) to the UI.
 - **Multi-Temporal Change Analysis**: Compare T1 and T2 satellite scenes to detect concrete developments, resource depletion, and infrastructure changes over time.
+- **False Alarm Triage**: Analysts can flag false positive alerts, which automatically quarantines the image chips to a local training data repository.
 - **100% Air-Gapped**: Fully functional offline without external APIs, CDNs, or cloud dependencies. 
 - **Efficient Processing**: Streams and processes large GeoTIFFs in chunks using `rasterio` and GDAL to comfortably run on local consumer-grade hardware.
 - **Unified Web Interface**: An interactive React-based map dashboard to seamlessly ingest, search, and triage changes.
@@ -70,7 +73,7 @@ The backend API, frontend bundle, and the Qdrant vector database are orchestrate
 
 3. **Access the Application**
    Once the containers are healthy, open your web browser and navigate to:
-   **[http://localhost:8000](http://localhost:8000)**
+   **[http://localhost:8080](http://localhost:8080)**
 
 ---
 
@@ -86,7 +89,7 @@ Because Trinetra AI is fully offline, the Qdrant vector database starts empty. F
    *(This generates `DEMO_T43RGN_20240115T052131_L2A` and `DEMO_T43RGN_20260115T052131_L2A` inside the `backend/sample_data/` directory)*
 
 2. **Ingest the Scenes via Dashboard**
-   - Open the web dashboard ([http://localhost:8000](http://localhost:8000)) and go to the **Ingest** tab.
+   - Open the web dashboard ([http://localhost:8080](http://localhost:8080)) and go to the **Ingest** tab.
    - Enter `DEMO_T43RGN_20240115T052131_L2A` as the source and click **Ingest**.
    - Enter `DEMO_T43RGN_20260115T052131_L2A` as the source and click **Ingest**.
 
@@ -104,6 +107,8 @@ Trinetra-AI/
 │   ├── app/                   # FastAPI backend application
 │   ├── model_weights/         # Pre-downloaded model weights (read-only)
 │   ├── sample_data/           # Sentinel-2 GeoTIFF (.tif) scenes
+│   ├── secure_drop_zone/      # Automated ingestion directory for the Watchdog
+│   ├── training_data/         # Triaged false alarm image chips
 │   ├── make_demo_scenes.py    # Demo data generator
 │   ├── requirements.txt       
 │   └── test_api.py            # Local API testing script

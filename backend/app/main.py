@@ -36,6 +36,16 @@ async def lifespan(app: FastAPI):
     # The audit log's directory may be a fresh bind mount with nothing in it.
     settings.audit_log_path.parent.mkdir(parents=True, exist_ok=True)
 
+    import asyncio
+    from app.core.state import broadcaster
+    from app.services.watchdog_service import start_watchdog
+    
+    # Let the broadcaster know the main event loop so sync threads can push to it
+    broadcaster.loop = asyncio.get_running_loop()
+
+    observer = start_watchdog()
+    logger.info("AOI Watchdog started.")
+
     # Bootstrap the collection now so the first /search does not race a create.
     # A missing Qdrant is logged, not fatal: /health should still answer and
     # report the outage rather than the whole API refusing to start.

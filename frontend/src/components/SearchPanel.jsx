@@ -1,12 +1,8 @@
 /**
  * Natural-language retrieval controls.
- *
- * score_threshold is intentionally NOT exposed as a 0-1 slider. RemoteCLIP
- * text-image cosine scores cluster around 0.15-0.35, so a naive "minimum
- * confidence 50%" control would silently return nothing and read as a broken
- * search. The confidence slider maps onto that real range instead.
+ * Omni-search with regex detection and Geoman integration.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const EXAMPLES = [
   "aircraft parked on a runway",
@@ -16,23 +12,54 @@ const EXAMPLES = [
   "dense forest canopy",
 ];
 
-export default function SearchPanel({ scenes, busy, onSearch }) {
+export default function SearchPanel({ scenes, busy, drawnBbox, onSearch }) {
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(20);
   const [threshold, setThreshold] = useState(0);
   const [sceneId, setSceneId] = useState("");
   const [maxCloud, setMaxCloud] = useState(100);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  useEffect(() => {
+    if (drawnBbox) {
+      setQuery(`[${drawnBbox.join(", ")}]`);
+    } else if (query.startsWith("[")) {
+      setQuery("");
+    }
+  }, [drawnBbox]);
 
   const submit = (event) => {
     event.preventDefault();
     const trimmed = query.trim();
     if (!trimmed || busy) return;
+
+    // Detect if query is purely coordinates
+    const isCoords = /^\[?\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*\]?$/.test(trimmed);
+    
+    let textQuery = trimmed;
+    let boundingBox = drawnBbox;
+
+    if (isCoords) {
+      textQuery = "satellite imagery"; // Default fallback text
+      try {
+        boundingBox = JSON.parse(trimmed.replace(/^\[?/, "[").replace(/\]?$/, "]"));
+      } catch(e) {}
+    }
+
+    const dateRange = (startDate && endDate) ? [
+      new Date(startDate).toISOString(), 
+      new Date(endDate).toISOString()
+    ] : null;
+
     onSearch({
-      query: trimmed,
+      query: textQuery,
       limit: Number(limit),
       scoreThreshold: threshold > 0 ? threshold : null,
       sceneIds: sceneId ? [sceneId] : null,
       maxCloud: maxCloud < 100 ? maxCloud / 100 : null,
+      boundingBox: boundingBox,
+      dateRange: dateRange,
     });
   };
 
@@ -40,20 +67,25 @@ export default function SearchPanel({ scenes, busy, onSearch }) {
     <form className="panel-scroll" onSubmit={submit}>
       <div className="field">
         <label className="lbl" htmlFor="q">
-          Target description
+          Omni-Search (Text, Coords)
         </label>
-        <textarea
-          id="q"
-          className="txt"
-          rows={2}
-          placeholder="e.g. aircraft parked on a runway"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter submits; Shift+Enter adds a line, matching chat conventions.
-            if (e.key === "Enter" && !e.shiftKey) submit(e);
-          }}
-        />
+        <div style={{ position: "relative" }}>
+          <textarea
+            id="q"
+            className="txt"
+            rows={2}
+            placeholder="e.g. aircraft parked on a runway, or [W, S, E, N]"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) submit(e);
+            }}
+          />
+          {/* Mock image upload icon as requested by the prompt */}
+          <span style={{ position: "absolute", bottom: "10px", right: "10px", cursor: "pointer", opacity: 0.5 }} title="Upload Image (UI Mock)">
+            📸
+          </span>
+        </div>
         <div className="hint">
           Try:{" "}
           {EXAMPLES.map((ex, i) => (
@@ -71,6 +103,19 @@ export default function SearchPanel({ scenes, busy, onSearch }) {
               </a>
             </span>
           ))}
+        </div>
+      </div>
+
+      <div className="field">
+        <div className="row">
+          <div>
+            <label className="lbl">Start Date</label>
+            <input type="date" className="txt" value={startDate} onChange={e => setStartDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="lbl">End Date</label>
+            <input type="date" className="txt" value={endDate} onChange={e => setEndDate(e.target.value)} />
+          </div>
         </div>
       </div>
 
@@ -150,7 +195,7 @@ export default function SearchPanel({ scenes, busy, onSearch }) {
             value={maxCloud}
             onChange={(e) => setMaxCloud(Number(e.target.value))}
           />
-          <span className="range-val">{maxCloud === 100 ? "any" : `${maxCloud}%`}</span>
+          <span className="range-val">{maxCloud === 100 ? "off" : `${maxCloud}%`}</span>
         </div>
       </div>
 

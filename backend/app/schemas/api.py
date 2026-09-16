@@ -56,6 +56,14 @@ class SearchRequest(BaseModel):
                     "typically 0.15-0.35; 1.0 would return nothing.",
     )
     scene_ids: list[str] | None = None
+    bounding_box: list[float] | None = Field(
+        None, min_length=4, max_length=4,
+        description="GeoJSON bounding box [min_lon, min_lat, max_lon, max_lat]."
+    )
+    date_range: list[str] | None = Field(
+        None, min_length=2, max_length=2,
+        description="ISO8601 date range [start_date, end_date]."
+    )
     max_cloud: float | None = Field(
         None, ge=0.0, le=1.0, description="Reject hits cloudier than this fraction."
     )

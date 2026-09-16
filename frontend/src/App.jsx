@@ -15,6 +15,7 @@ import SearchPanel from "./components/SearchPanel";
 import ChangePanel from "./components/ChangePanel";
 import IngestPanel from "./components/IngestPanel";
 import MetadataDrawer from "./components/MetadataDrawer";
+import TriageModal from "./components/TriageModal";
 
 const TABS = [
   { id: "search", label: "Search" },
@@ -39,6 +40,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [flash, setFlash] = useState(null);
+  const [drawnBbox, setDrawnBbox] = useState(null);
 
   const lastQuery = meta?.query ?? null;
 
@@ -225,7 +227,12 @@ export default function App() {
             {flash && !error && <div className="notice good">{flash}</div>}
 
             {tab === "search" && (
-              <SearchPanel scenes={scenes} busy={busy} onSearch={handleSearch} />
+              <SearchPanel
+                scenes={scenes}
+                busy={busy}
+                drawnBbox={drawnBbox}
+                onSearch={handleSearch}
+              />
             )}
             {tab === "change" && <ChangePanel busy={busy} onCompare={handleCompare} />}
             {tab === "ingest" && (
@@ -286,17 +293,24 @@ export default function App() {
             verdicts={verdicts}
             showImagery={showImagery}
             onSelect={setSelectedId}
+            onBoundingBoxChange={setDrawnBbox}
           />
           {selectedHit && (
             <MetadataDrawer
               hit={selectedHit}
               mode={mode}
-              verdict={verdicts[selectedHit.tile_id]}
-              busy={busy}
-              onTriage={handleTriage}
+              verdict={verdicts[selectedHit.tile_id]?.verdict}
               onClose={() => setSelectedId(null)}
+              onTriage={handleTriage}
             />
           )}
+          <TriageModal 
+            onAcknowledge={(alert) => setFlash(`Acknowledged alert for ${alert.scene}`)}
+            onFalseAlarm={(alert) => {
+              setFlash(`Marked ${alert.scene} as false alarm.`);
+              // Can optionally call api.triageFalseAlarm here if we had a specific tile_id
+            }}
+          />
         </main>
       </div>
     </div>
