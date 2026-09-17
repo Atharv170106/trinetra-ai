@@ -46,8 +46,23 @@ async def lifespan(app: FastAPI):
     # RuntimeError, and silently discarded every alert.
     broadcaster.set_loop(asyncio.get_running_loop())
 
-    observer = start_watchdog()
-    logger.info("AOI Watchdog started.")
+    # Guarded, matching the Qdrant policy below. This call was previously bare,
+    # so ANY failure inside it - an unwritable bind mount, a PollingObserver
+    # thread that will not spawn - propagated out of lifespan, uvicorn printed
+    # "Application startup failed. Exiting." and the process died. From the
+    # outside that looks like `curl: (52) Empty reply from server`: the port is
+    # published, so the TCP connect succeeds, but nothing is listening behind it.
+    # The watchdog is an auxiliary feature; it must not be able to take down
+    # search, change detection, or /health.
+    observer = None
+    try:
+        observer = start_watchdog()
+        logger.info("AOI Watchdog started.")
+    except Exception:
+        logger.exception(
+            "Watchdog failed to start - continuing WITHOUT drop-zone monitoring. "
+            "Sneakernet ingest via POST /api/ingest is unaffected."
+        )
 
     # Bootstrap the collection now so the first /search does not race a create.
     # A missing Qdrant is logged, not fatal: /health should still answer and
@@ -67,6 +82,15 @@ async def lifespan(app: FastAPI):
     logger.info("%s %s ready (models load on first use)",
                 settings.api_title, settings.api_version)
     yield
+
+    # Stop the observer before closing Qdrant. Previously it was started and
+    # never stopped, so its polling threads outlived every --reload cycle.
+    if observer is not None:
+        try:
+            observer.stop()
+            observer.join(timeout=10)
+        except Exception:
+            logger.exception("Watchdog shutdown raised (ignored)")
 
     vector_store.close()
     logger.info("Shutdown complete.")

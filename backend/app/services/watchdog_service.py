@@ -9,9 +9,17 @@ from watchdog.events import FileSystemEventHandler
 
 from app.core.config import settings
 from app.core.state import state, broadcaster
-from app.services.ingest import ingest_scene
-from app.services.ml_inference import remoteclip
-from app.services.change_detect import compare_scenes
+
+# NOTE: ingest_scene / remoteclip / compare_scenes are deliberately NOT imported
+# here. This module is imported from main.py's lifespan, and uvicorn only binds
+# its listening socket AFTER lifespan startup returns - so anything slow at this
+# level delays the socket, and a client connecting in that window gets an
+# accepted-then-closed connection ("curl: (52) Empty reply from server").
+#
+# Those three names pull in torch, open_clip and rasterio transitively, which is
+# tens of seconds in the CUDA image and also contradicts main.py's contract that
+# both encoders are lazy singletons loaded on first use. Import them inside
+# process_scene() instead, where the cost is paid on a real detection.
 
 logger = logging.getLogger("watchdog")
 
