@@ -53,6 +53,16 @@ def _free_vram() -> None:
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
+def evict_ollama() -> None:
+    """Force Ollama to unload the VLM, freeing VRAM for Prithvi."""
+    import httpx
+    try:
+        # Keep-alive 0 instantly drops the model
+        payload = {"model": settings.ollama_model, "keep_alive": 0}
+        with httpx.Client(timeout=2.0) as client:
+            client.post(f"{settings.ollama_url}/api/generate", json=payload)
+    except Exception as e:
+        logger.debug(f"Failed to evict Ollama, it may already be unloaded: {e}")
 
 def _resolve_device(prefer_cuda: bool = True) -> torch.device:
     if prefer_cuda and torch.cuda.is_available():
@@ -282,6 +292,9 @@ class PrithviChangeEncoder:
                 raise InferenceError(f"Prithvi checkpoint missing: {ckpt}")
             if not code.is_file():
                 raise InferenceError(f"prithvi_mae.py missing: {code}")
+
+            # Force Ollama out of VRAM before we allocate for Prithvi
+            evict_ollama()
 
             # The checkpoint's model code lives beside the weights, not on the
             # import path; add it once so `from prithvi_mae import PrithviMAE` works.

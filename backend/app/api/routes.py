@@ -784,8 +784,7 @@ def _build_prompt(query: str, mode: str) -> str:
         "1. Begin with exactly one of: 'High Confidence: ', "
         "'Medium Confidence: ', 'Low Confidence: '.\n"
         "2. Two or three sentences. No preamble, no markdown, no bullet lists.\n"
-        "3. Report only what is visible. If the imagery does not support the "
-        "analyst's interest, say so plainly.\n"
+        "3. Describe exactly what is visible in the imagery, focusing on physical changes, structures, or terrain features. Do not refuse to answer; if you cannot identify specific military objects, simply describe the general landscape and any visible changes.\n"
         "4. Never speculate about intent, unit identity, or nationality.\n"
     )
 

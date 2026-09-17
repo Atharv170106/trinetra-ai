@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     # Reject near-flat chips (water, uniform desert) - no semantic content.
     min_stddev: float = 1.0
 
+    # ----------------------------------------------------------- watchdog ml gate
+    watchdog_target_query: str = "military vehicles, bunkers, aircraft, or facilities"
+    watchdog_similarity_threshold: float = 0.22
+    watchdog_change_threshold: float = 0.40
+
     # ------------------------------------------------------------- band maps
     # RemoteCLIP is an RGB model: true-colour composite.
     remoteclip_bands: tuple[str, ...] = ("B04", "B03", "B02")
@@ -136,7 +141,7 @@ class Settings(BaseSettings):
     # sets OLLAMA_KEEP_ALIVE=0 and /api/explain holds _GPU_LOCK, so this model is
     # never resident at the same moment as a Prithvi forward pass.
     ollama_model: str = "qwen2.5vl:3b"
-    ollama_timeout_s: float = 90.0
+    ollama_timeout_s: float = 300.0
     # Longest side of each chip sent to the SLM. Chips are 256 px; upscaling buys
     # nothing. Qwen2.5-VL tokenises at native resolution in 28 px cells, so 448
     # is ~256 visual tokens per image - two images stay well inside num_ctx.

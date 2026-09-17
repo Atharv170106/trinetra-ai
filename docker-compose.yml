@@ -53,10 +53,10 @@ services:
     container_name: trinetra_ollama
     restart: unless-stopped
     environment:
-      # Unload the model the instant a request finishes. Default is 5m, which
-      # would hold ~1.8 GB of the 8 GB card hostage across an entire Prithvi
-      # change run and OOM it. Trade-off: ~2 s reload per /explain call.
-      OLLAMA_KEEP_ALIVE: "0"
+      # Default is 5m. Keeping the model resident avoids the ~90s warmup penalty
+      # on every single /explain call, allowing subsequent clicks to run in ~2s.
+      # Prithvi will explicitly evict this model from VRAM before it loads.
+      OLLAMA_KEEP_ALIVE: "5m"
       # One model, one request at a time. Concurrency here competes with torch
       # for VRAM and _GPU_LOCK cannot see across the container boundary.
       OLLAMA_MAX_LOADED_MODELS: "1"
