@@ -553,9 +553,6 @@ def pipeline_ingest(req: PipelineIngestRequest) -> PipelineIngestResponse:
             if rc == 0:
                 _PIPELINE_JOBS[job_id]["message"] = "Download completed successfully. Extracting chips and indexing to vector store..."
                 try:
-                    from app.services.ingest import ingest_scene
-                    from app.core.config import settings
-                    
                     ingested_count = 0
                     for d in settings.secure_drop_zone_dir.iterdir():
                         if d.is_dir() and d.name.startswith("S2"):
