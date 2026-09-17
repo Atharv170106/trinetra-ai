@@ -59,6 +59,15 @@ export const api = {
       })
     ),
 
+  explain: ({ query, targetTileId, baselineTileId = null }) =>
+    unwrap(
+      http.post("/explain", {
+        query,
+        target_tile_id: targetTileId,
+        baseline_tile_id: baselineTileId,
+      })
+    ),
+
   ingest: ({ source, sceneId = null, maxTiles = null, replace = true }) =>
     unwrap(
       http.post("/ingest", {

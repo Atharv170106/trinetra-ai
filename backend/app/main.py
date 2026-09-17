@@ -40,8 +40,11 @@ async def lifespan(app: FastAPI):
     from app.core.state import broadcaster
     from app.services.watchdog_service import start_watchdog
     
-    # Let the broadcaster know the main event loop so sync threads can push to it
-    broadcaster.loop = asyncio.get_running_loop()
+    # Bind the running loop so the watchdog's worker thread can push SSE alerts
+    # into it. This assignment previously set `broadcaster.loop`, which nothing
+    # read - broadcast() called get_running_loop() from the worker thread, hit
+    # RuntimeError, and silently discarded every alert.
+    broadcaster.set_loop(asyncio.get_running_loop())
 
     observer = start_watchdog()
     logger.info("AOI Watchdog started.")

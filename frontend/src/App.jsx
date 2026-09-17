@@ -200,7 +200,7 @@ export default function App() {
           />
           <LeafletMap hits={hits} mode={mode} selectedId={selectedId} verdicts={verdicts} showImagery={showImagery} meta={meta} onSelect={setSelectedId} onBoundingBoxChange={setDrawnBbox} />
           {selectedHit && (
-            <MetadataDrawer hit={selectedHit} mode={mode} verdict={verdicts[selectedHit.tile_id]} onClose={() => setSelectedId(null)} onTriage={handleTriage} />
+            <MetadataDrawer hit={selectedHit} mode={mode} verdict={verdicts[selectedHit.tile_id]} onClose={() => setSelectedId(null)} onTriage={handleTriage} query={mode === "search" ? lastQuery : null} baselineSceneId={meta?.t1_scene_id ?? null} />
           )}
           <TriageModal onAcknowledge={(alert) => setFlash(`Acknowledged alert for ${alert.scene}`)} onFalseAlarm={(alert) => setFlash(`Marked ${alert.scene} as false alarm.`)} />
         </main>

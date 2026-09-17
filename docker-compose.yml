@@ -41,6 +41,75 @@ services:
       retries: 10
       start_period: 30s
 
+  # Local vision-language model for the /api/explain XAI summaries. Runs on the
+  # same GPU as Prithvi and RemoteCLIP, so its residency is capped hard - see the
+  # OLLAMA_* environment below.
+  #
+  # This service is in the DEFAULT profile and must never reach the network at
+  # runtime. It only serves models already present in the ollama_data volume; the
+  # one-time download lives in the `setup` profile below.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: trinetra_ollama
+    restart: unless-stopped
+    environment:
+      # Unload the model the instant a request finishes. Default is 5m, which
+      # would hold ~1.8 GB of the 8 GB card hostage across an entire Prithvi
+      # change run and OOM it. Trade-off: ~2 s reload per /explain call.
+      OLLAMA_KEEP_ALIVE: "0"
+      # One model, one request at a time. Concurrency here competes with torch
+      # for VRAM and _GPU_LOCK cannot see across the container boundary.
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      # Refuse to reach out even if some future code path asks it to.
+      OLLAMA_NOPRUNE: "1"
+    volumes:
+      # Named volume, seeded once by the `setup` profile. Treat it exactly like
+      # backend/model_weights: an artefact you provision before going air-gapped.
+      - ollama_data:/root/.ollama
+    ports:
+      # Loopback only, same reasoning as Qdrant - nothing off-box needs this.
+      - "127.0.0.1:11434:11434"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ONE-TIME, ONLINE ONLY. Not in the default profile, so `docker compose up`
+  # never touches the network:
+  #
+  #   docker compose --profile setup up ollama-puller
+  #
+  # Run this once on a networked machine, verify with
+  # `docker compose exec ollama ollama list`, then go air-gapped. The model then
+  # lives in the ollama_data volume for good.
+  #
+  # Previously this ran in the default profile, which meant every `up` tried to
+  # download two models - an outright violation of the air-gap requirement, and
+  # on a disconnected demo box it just hangs.
+  ollama-puller:
+    image: curlimages/curl:latest
+    container_name: trinetra_ollama_puller
+    profiles: ["setup"]
+    restart: "no"
+    depends_on:
+      - ollama
+    # moondream only. qwen2-vl:2b was also being pulled but nothing ever
+    # referenced it - routes.py hardcodes moondream - so it was 1.5 GB of disk
+    # and a second VRAM tenant for nothing. moondream is single-image, which is
+    # why /api/explain composites T1|T2 into one canvas before sending.
+    command: >
+      sh -c "
+      echo 'Waiting for Ollama API...' &&
+      while ! curl -sf http://ollama:11434/api/tags > /dev/null; do sleep 2; done &&
+      echo 'Pulling moondream (one-time, requires network)...' &&
+      curl -fS -X POST http://ollama:11434/api/pull -d '{\"name\": \"moondream\"}' &&
+      echo 'Done. This volume is now seeded; the stack can go offline.'
+      "
+
   trinetra:
     build:
       context: .
@@ -94,3 +163,4 @@ services:
 
 volumes:
   qdrant_data:
+  ollama_data:

@@ -234,3 +234,12 @@ class PipelineIngestResponse(BaseModel):
     message: str
     job_id: str
 
+
+# ------------------------------------------------------------------- explain
+class ExplainRequest(BaseModel):
+    query: str = Field(..., description="The user's original search query or context")
+    target_tile_id: str = Field(..., description="The primary tile ID to explain")
+    baseline_tile_id: str | None = Field(None, description="The baseline tile ID for change analysis")
+
+class ExplainResponse(BaseModel):
+    summary: str

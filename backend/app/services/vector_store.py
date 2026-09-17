@@ -346,7 +346,13 @@ class VectorStore:
             response = self.client.query_points(
                 collection_name=self.collection,
                 query=vec.tolist(),
-                query_filter=self._build_filter(scene_ids, max_cloud),
+                # All four arguments, positionally matching _build_filter. This
+                # call previously passed only (scene_ids, max_cloud), so the
+                # date_range branch below was unreachable and every temporal
+                # filter the UI sent was silently ignored.
+                query_filter=self._build_filter(
+                    scene_ids, max_cloud, bounding_box, date_range
+                ),
                 limit=limit,
                 score_threshold=score_threshold,
                 with_payload=True,

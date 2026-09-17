@@ -117,10 +117,50 @@ class Settings(BaseSettings):
     # (where Vite serves it) - main.py mounts it only if it exists.
     frontend_dist_dir: Path = PROJECT_ROOT / "frontend" / "dist"
 
+    # ------------------------------------------------------- XAI / Ollama SLM
+    # Local vision-language model used by POST /api/explain. Air-gapped: the
+    # weights are pre-seeded into the ollama_data volume by
+    # `docker compose --profile setup up ollama-puller` and never fetched at
+    # runtime.
+    #
+    # Inside compose the hostname is the service name. When running uvicorn from
+    # the venv on the host instead, override with
+    #   TRINETRA_OLLAMA_URL=http://localhost:11434
+    ollama_url: str = "http://ollama:11434"
+    # qwen2.5vl:3b - 3.2 GB download. The 7b tag is 6.0 GB and will not coexist
+    # with Prithvi + RemoteCLIP on an 8 GB card; 32b/72b are not candidates.
+    #
+    # CAUTION: 3.2 GB is the download size, not the resident VRAM cost. Add the
+    # KV cache (~300 MB at 8k ctx for a 3B GQA model) and the vision encoder's
+    # activations on top. It only fits alongside our two models because compose
+    # sets OLLAMA_KEEP_ALIVE=0 and /api/explain holds _GPU_LOCK, so this model is
+    # never resident at the same moment as a Prithvi forward pass.
+    ollama_model: str = "qwen2.5vl:3b"
+    ollama_timeout_s: float = 90.0
+    # Longest side of each chip sent to the SLM. Chips are 256 px; upscaling buys
+    # nothing. Qwen2.5-VL tokenises at native resolution in 28 px cells, so 448
+    # is ~256 visual tokens per image - two images stay well inside num_ctx.
+    ollama_max_image_px: int = 448
+    ollama_num_ctx: int = 8192
+
+    # True  -> send T1 and T2 as two entries in the Ollama images[] array.
+    # False -> composite them into one labelled side-by-side canvas instead.
+    #
+    # Native multi-image is the better answer on a model that supports it, but
+    # /api/generate takes a raw prompt string with no per-image position markers,
+    # so "which one is the baseline" depends on the model's chat template. The
+    # composite path is deterministic and works on ANY vision model, including
+    # single-image ones. Models listed in SINGLE_IMAGE_MODELS force it on.
+    ollama_multi_image: bool = True
+
+    # Models known to accept exactly one image. Anything here is composited
+    # regardless of ollama_multi_image, because passing two silently drops the
+    # second and the change explanation would describe only the baseline.
+    single_image_models: tuple[str, ...] = ("moondream", "llava-phi3", "bakllava")
+
     # ------------------------------------------------------------------- misc
     tile_png_quality: int = 90
     log_level: str = "INFO"
-
     @property
     def tile_stride(self) -> int:
         stride = self.tile_size - self.tile_overlap

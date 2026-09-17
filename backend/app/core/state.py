@@ -29,6 +29,19 @@ import asyncio
 class EventBroadcaster:
     def __init__(self):
         self.queues: list[asyncio.Queue] = []
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """
+        Record the server's event loop. Called once from main.py's lifespan.
+
+        Without this, broadcast() silently dropped EVERY alert. It called
+        asyncio.get_running_loop(), which raises RuntimeError when invoked from a
+        plain worker thread - and the watchdog is exactly that. The except branch
+        swallowed it, so the SSE stream stayed empty forever while the logs
+        happily reported that an alert had been sent.
+        """
+        self._loop = loop
 
     def subscribe(self) -> asyncio.Queue:
         q = asyncio.Queue()
@@ -40,17 +53,17 @@ class EventBroadcaster:
             self.queues.remove(q)
 
     def broadcast(self, message: str):
-        # We might call this from a sync thread (like watchdog)
-        # So we need to put it safely into the async queues
-        for q in self.queues:
-            # If the loop is running, we can use call_soon_threadsafe
-            try:
-                loop = asyncio.get_running_loop()
-                loop.call_soon_threadsafe(q.put_nowait, message)
-            except RuntimeError:
-                # No running loop, just put it directly (only works if in same loop context, which watchdog isn't)
-                # We can handle this by creating a global event loop reference in main.py, or we can use asyncio.run_coroutine_threadsafe
-                pass
+        """Thread-safe: callable from the watchdog worker or from the loop."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = self._loop
+        if loop is None or loop.is_closed():
+            # Nothing to deliver into yet. Say so rather than pretending.
+            print(f"[broadcaster] no event loop bound; dropped: {message[:120]}")
+            return
+        for q in list(self.queues):
+            loop.call_soon_threadsafe(q.put_nowait, message)
 
 broadcaster = EventBroadcaster()
 

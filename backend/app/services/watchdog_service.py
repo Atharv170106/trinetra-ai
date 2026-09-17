@@ -4,7 +4,7 @@ import threading
 import json
 from pathlib import Path
 
-from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
 
 from app.core.config import settings
@@ -86,9 +86,15 @@ class DropZoneHandler(FileSystemEventHandler):
 
 def start_watchdog():
     settings.secure_drop_zone_dir.mkdir(parents=True, exist_ok=True)
-    
-    observer = Observer()
+
+    # PollingObserver, NOT the native Observer. The drop zone is a bind mount
+    # written from the Windows host, and inotify events do not cross that
+    # boundary - the native observer registers successfully and then simply
+    # never fires, so the watchdog looks alive and detects nothing. Polling
+    # costs a stat() sweep per interval, which is nothing at this scale.
+    observer = PollingObserver(timeout=5.0)
     handler = DropZoneHandler()
     observer.schedule(handler, str(settings.secure_drop_zone_dir), recursive=True)
     observer.start()
+    logger.info("Watchdog polling %s every 5s", settings.secure_drop_zone_dir)
     return observer
