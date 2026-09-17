@@ -97,16 +97,14 @@ services:
     restart: "no"
     depends_on:
       - ollama
-    # moondream only. qwen2-vl:2b was also being pulled but nothing ever
-    # referenced it - routes.py hardcodes moondream - so it was 1.5 GB of disk
-    # and a second VRAM tenant for nothing. moondream is single-image, which is
-    # why /api/explain composites T1|T2 into one canvas before sending.
+    # qwen2.5vl:3b is the active model. We pull it once during the setup profile
+    # so the main runtime can be completely offline.
     command: >
       sh -c "
       echo 'Waiting for Ollama API...' &&
       while ! curl -sf http://ollama:11434/api/tags > /dev/null; do sleep 2; done &&
-      echo 'Pulling moondream (one-time, requires network)...' &&
-      curl -fS -X POST http://ollama:11434/api/pull -d '{\"name\": \"moondream\"}' &&
+      echo 'Pulling qwen2.5vl:3b (one-time, requires network)...' &&
+      curl -fS -X POST http://ollama:11434/api/pull -d '{\"name\": \"qwen2.5vl:3b\"}' &&
       echo 'Done. This volume is now seeded; the stack can go offline.'
       "
 
