@@ -63,40 +63,49 @@ The backend API, frontend bundle, and the Qdrant vector database are orchestrate
 
 1. **Clone the repository**
    ```bash
-   git clone [https://github.com/Atharv170106/trinetra-ai.git](https://github.com/Atharv170106/trinetra-ai.git)
+   git clone https://github.com/Atharv170106/trinetra-ai.git
    cd trinetra-ai
-2.Start the containers
-docker compose up -d
-Note: On the first run, Docker will need network access to build the images (pulling python packages and node modules). Subsequent executions can be run fully air-gapped.
+   ```
 
-3.Access the Application
-Once the containers are healthy, open your web browser and navigate to:
-http://localhost:8080/
-📡 Ingesting Satellite Imagery
+2. **Start the containers**
+   ```bash
+   docker compose up -d
+   ```
+   *Note: On the first run, Docker will need network access to build the images (pulling python packages and node modules). Subsequent executions can be run fully air-gapped.*
+
+3. **Access the Application**
+   Once the containers are healthy, open your web browser and navigate to:
+   [http://localhost:8080/](http://localhost:8080/)
+
+---
+
+## 📡 Ingesting Satellite Imagery
+
 Trinetra AI uses a background watchdog service to automatically monitor and ingest new scenes from a secure drop zone. To acquire real data, use the included STAC ingestion script on an internet-connected machine.
 
-1.Download Sentinel-2 COGs
-Run the ingest_pipeline.py script to fetch real Sentinel-2 scenes for a bounding box:
+1. **Download Sentinel-2 COGs**
+   Run the `ingest_pipeline.py` script to fetch real Sentinel-2 scenes for a bounding box:
 
-PowerShell
-.\venv\Scripts\python.exe backend\ingest_pipeline.py --bbox 72.80 18.90 73.05 19.15 --start 2025-01-01 --end 2025-03-31 --limit 2
-(This downloads the required bands directly into backend/secure_drop_zone/)
+   ```powershell
+   .\venv\Scripts\python.exe backend\ingest_pipeline.py --bbox 72.80 18.90 73.05 19.15 --start 2025-01-01 --end 2025-03-31 --limit 2
+   ```
+   *(This downloads the required bands directly into `backend/secure_drop_zone/`)*
 
-2.Automated Background Ingestion (Watchdog)
-The air-gapped system automatically detects new folders in backend/secure_drop_zone/.
+2. **Automated Background Ingestion (Watchdog)**
+   The air-gapped system automatically detects new folders in `backend/secure_drop_zone/`.
+   New scenes are tiled and processed.
+   If significant changes or matches are found, Real-Time Alerts will appear in the UI.
 
-New scenes are tiled and processed.
+3. **Explore Features**
+   - **Search Tab**: Type semantic queries (e.g., "aircraft on runway") or use the Leaflet-Geoman draw tools to select a bounding box constraint.
+   - **Change Tab**: Select two ingested scenes to analyze temporal changes.
+   - **Triage**: Click "False Alarm" on any alerts to move the false positive image chips into `backend/training_data/`.
 
-If significant changes or matches are found, Real-Time Alerts will appear in the UI.
+---
 
-3.Explore Features
+## 📂 Directory Structure
 
-Search Tab: Type semantic queries (e.g., "aircraft on runway") or use the Leaflet-Geoman draw tools to select a bounding box constraint.
-
-Change Tab: Select two ingested scenes to analyze temporal changes.
-
-Triage: Click "False Alarm" on any alerts to move the false positive image chips into backend/training_data/.
-📂 Directory Structure
+```text
 Trinetra-AI/
 ├── backend/
 │   ├── app/                   # FastAPI backend application
@@ -112,12 +121,16 @@ Trinetra-AI/
 │   └── package.json           
 ├── docker-compose.yml         # Container orchestration
 └── Dockerfile                 # Unified Dockerfile for Frontend & Backend
-📜 License
+```
+
+---
+
+## 📜 License
+
 This project is licensed under the MIT License.
 
 ```text
 MIT License
 
 Copyright (c) 2026 Trinetra AI
-
 ```
