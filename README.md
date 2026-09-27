@@ -23,6 +23,10 @@ The system ingests massive Sentinel-2 / Landsat Cloud-Optimized GeoTIFFs (COGs),
 - **100% Air-Gapped**: Fully functional offline without external APIs, CDNs, or cloud dependencies. 
 - **Efficient Processing**: Streams and processes large GeoTIFFs in chunks using `rasterio` and GDAL to comfortably run on local consumer-grade hardware.
 - **Unified Web Interface**: An interactive React-based map dashboard to seamlessly ingest, search, and triage changes.
+- **On-Demand Explainable AI (XAI)**: Generates natural language tactical briefings of satellite chips using Qwen2.5-VL 3B (AWQ Quantized).
+- **Intelligent Tactical Omni-Bar UI**: A floating glassmorphism command bar that automatically detects and routes text queries or spatial coordinates.
+- **Air-Gapped Map Survivability**: Uses a custom HTML Canvas Graticule Layer to dynamically draw latitude/longitude grids entirely offline without external map tile servers.
+- **Dynamic VRAM Orchestration**: Automatically lazy-loads foundation models (Prithvi, RemoteCLIP) only during inference, preventing OOM crashes on standard 8GB GPUs.
 
 ---
 
